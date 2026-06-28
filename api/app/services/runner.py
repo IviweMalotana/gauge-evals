@@ -68,6 +68,7 @@ def execute_run(run_id: int) -> None:
                     scorers=run.scorers or [],
                     pass_threshold=run.pass_threshold,
                     judge_executor=judge_executor,
+                    judge_model=run.model,
                 )
                 res = Result(
                     run_id=run.id,
