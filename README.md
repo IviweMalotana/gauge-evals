@@ -128,7 +128,7 @@ Built milestone by milestone:
 - [x] **M1** — DB schema + seeded demo dataset & historical runs
 - [x] **M2** — Run engine (Anthropic + deterministic mock)
 - [x] **M3** — Scorers, incl. LLM-as-judge with shown reasoning
-- [ ] **M4** — Run view UI
+- [x] **M4** — Run view UI
 - [ ] **M5** — Run comparison / diff (hero feature)
 - [ ] **M6** — Trend dashboard + trigger-run flow
 - [ ] **M7** — Case-study landing page
