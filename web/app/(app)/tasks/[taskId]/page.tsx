@@ -82,7 +82,17 @@ export default function TaskPage() {
 
       {/* Runs */}
       <section className="mb-6">
-        <h2 className="mb-3 text-sm font-semibold text-fg">Runs</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-fg">Runs</h2>
+          {runs && runs.length >= 2 && (
+            <Link
+              href={`/compare?task=${taskId}&base=${runs[1].id}&compare=${runs[0].id}`}
+              className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface px-3 text-xs font-medium text-fg transition-colors hover:bg-surface-2"
+            >
+              ⇄ Compare runs
+            </Link>
+          )}
+        </div>
         {!runs ? (
           <Skeleton className="h-40 w-full rounded-lg" />
         ) : runs.length === 0 ? (

@@ -130,6 +130,34 @@ class RunDetail(RunSummary):
     results: list[ResultWithCase]
 
 
+class CompareCaseRow(ORMModel):
+    case: CaseOut
+    base: ResultOut | None
+    compare: ResultOut | None
+    score_delta: float
+    latency_delta: int
+    # improved | regressed | unchanged | missing
+    status: str
+
+
+class CompareSummary(BaseModel):
+    improved: int
+    regressed: int
+    unchanged: int
+    passed_delta: int
+    score_delta: float
+    pass_rate_delta: float
+    cost_delta: float
+    latency_delta: float
+
+
+class CompareResponse(BaseModel):
+    base: RunSummary
+    compare: RunSummary
+    summary: CompareSummary
+    rows: list[CompareCaseRow]
+
+
 class TriggerRunRequest(BaseModel):
     task_id: int
     dataset_id: int | None = None

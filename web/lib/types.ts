@@ -114,3 +114,34 @@ export interface RunDetail extends RunSummary {
   scorers: ScorerConfig[];
   results: ResultWithCase[];
 }
+
+// ── Run comparison / diff ──────────────────────────────────────────────
+
+export type DiffStatus = "improved" | "regressed" | "unchanged" | "missing";
+
+export interface CompareCaseRow {
+  case: Case;
+  base: Result | null;
+  compare: Result | null;
+  score_delta: number;
+  latency_delta: number;
+  status: DiffStatus;
+}
+
+export interface CompareSummary {
+  improved: number;
+  regressed: number;
+  unchanged: number;
+  passed_delta: number;
+  score_delta: number;
+  pass_rate_delta: number;
+  cost_delta: number;
+  latency_delta: number;
+}
+
+export interface CompareResponse {
+  base: RunSummary;
+  compare: RunSummary;
+  summary: CompareSummary;
+  rows: CompareCaseRow[];
+}
