@@ -125,7 +125,7 @@ See [`.env.example`](./.env.example) for the authoritative list. Summary:
 Built milestone by milestone:
 
 - [x] **M0** — Monorepo scaffold, design system, tooling
-- [ ] **M1** — DB schema + seeded demo dataset & historical runs
+- [x] **M1** — DB schema + seeded demo dataset & historical runs
 - [ ] **M2** — Run engine (Anthropic + deterministic mock)
 - [ ] **M3** — Scorers, incl. LLM-as-judge with shown reasoning
 - [ ] **M4** — Run view UI
