@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: gauge-db
+    environment:
+      POSTGRES_USER: gauge
+      POSTGRES_PASSWORD: gauge
+      POSTGRES_DB: gauge
+    ports:
+      - "5432:5432"
+    volumes:
+      - gauge_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gauge -d gauge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  gauge_pgdata:
