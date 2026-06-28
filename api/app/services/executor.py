@@ -16,11 +16,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from dataclasses import dataclass
 
 from app.config import get_settings
 from app.services.pricing import cost_usd
+
+# Mock executor paces each case slightly so the live-progress UI is observable
+# during a triggered demo run. Override with GAUGE_MOCK_DELAY_MS=0 to disable.
+_MOCK_DELAY_S = int(os.getenv("GAUGE_MOCK_DELAY_MS", "140")) / 1000
 
 # Models that reject sampling params (temperature/top_p/top_k) — see Anthropic API.
 _NO_SAMPLING_PREFIXES = ("claude-opus-4-7", "claude-opus-4-8", "claude-fable-5", "claude-mythos-5")
@@ -94,6 +99,8 @@ class MockExecutor:
     is_mock = True
 
     def run(self, *, system: str, prompt: str, model: str, params: dict, hint: str | None = None) -> CallResult:
+        if _MOCK_DELAY_S > 0:
+            time.sleep(_MOCK_DELAY_S)
         seed = int(hashlib.sha256(f"{model}|{prompt}".encode()).hexdigest(), 16)
         output = self._mock_output(hint, seed)
 

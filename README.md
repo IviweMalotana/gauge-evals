@@ -130,6 +130,6 @@ Built milestone by milestone:
 - [x] **M3** — Scorers, incl. LLM-as-judge with shown reasoning
 - [x] **M4** — Run view UI
 - [x] **M5** — Run comparison / diff (hero feature)
-- [ ] **M6** — Trend dashboard + trigger-run flow
+- [x] **M6** — Trend dashboard + trigger-run flow
 - [ ] **M7** — Case-study landing page
 - [ ] **M8** — Deploy notes

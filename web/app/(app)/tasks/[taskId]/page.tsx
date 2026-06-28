@@ -20,9 +20,12 @@ import {
   StatusPill,
 } from "@/components/ui";
 import { CodeBlock } from "@/components/run-table";
+import { TrendChart } from "@/components/trend-chart";
+import { TriggerRunDialog } from "@/components/trigger-dialog";
 
 export default function TaskPage() {
   const { taskId } = useParams<{ taskId: string }>();
+  const [triggerOpen, setTriggerOpen] = useState(false);
   const { data: task, error } = useSWR<TaskDetail>(`/tasks/${taskId}`, fetcher);
   const { data: runs } = useSWR<RunSummary[]>(`/tasks/${taskId}/runs`, fetcher);
   const datasetId = task?.datasets[0]?.id;
@@ -53,7 +56,24 @@ export default function TaskPage() {
         }
         title={task.name}
         description={task.description}
+        actions={
+          <button
+            onClick={() => setTriggerOpen(true)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-accent px-4 text-sm font-medium text-accent-fg transition-colors hover:bg-accent-hover"
+          >
+            + New run
+          </button>
+        }
       />
+
+      <TriggerRunDialog taskId={taskId} open={triggerOpen} onClose={() => setTriggerOpen(false)} />
+
+      {/* Quality trend */}
+      <Card className="mb-6 p-5">
+        <h2 className="mb-1 text-sm font-semibold text-fg">Quality trend</h2>
+        <p className="mb-4 text-xs text-muted">Score, cost, and latency across runs over time.</p>
+        {!runs ? <Skeleton className="h-64 w-full" /> : <TrendChart runs={runs} />}
+      </Card>
 
       {/* Setup */}
       <Card className="mb-6 p-5">
