@@ -126,7 +126,7 @@ Built milestone by milestone:
 
 - [x] **M0** — Monorepo scaffold, design system, tooling
 - [x] **M1** — DB schema + seeded demo dataset & historical runs
-- [ ] **M2** — Run engine (Anthropic + deterministic mock)
+- [x] **M2** — Run engine (Anthropic + deterministic mock)
 - [ ] **M3** — Scorers, incl. LLM-as-judge with shown reasoning
 - [ ] **M4** — Run view UI
 - [ ] **M5** — Run comparison / diff (hero feature)

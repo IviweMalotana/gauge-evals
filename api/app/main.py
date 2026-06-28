@@ -52,8 +52,4 @@ def _register_routers() -> None:
     app.include_router(runs.router)
 
 
-try:
-    _register_routers()
-except ImportError:
-    # Routers not yet present during early scaffolding.
-    pass
+_register_routers()
