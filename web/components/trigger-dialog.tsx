@@ -8,13 +8,11 @@ import { apiPost, fetcher } from "@/lib/api";
 import type { Meta, RunSummary } from "@/lib/types";
 
 const MODELS = [
-  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5 — fast & cheap" },
-  { id: "claude-sonnet-4-6", label: "Sonnet 4.6 — balanced" },
-  { id: "claude-opus-4-8", label: "Opus 4.8 — most capable" },
-  { id: "claude-fable-5", label: "Fable 5 — frontier" },
+  { id: "kimi-k2.5", label: "Kimi K2.5 — cheaper" },
+  { id: "kimi-k2.6", label: "Kimi K2.6 — flagship" },
+  { id: "kimi-k2.7-code", label: "Kimi K2.7 Code — coding agent" },
+  { id: "moonshot-v1-128k", label: "Moonshot v1 (128k) — legacy" },
 ];
-
-const NO_TEMP = ["claude-opus-4-8", "claude-opus-4-7", "claude-fable-5", "claude-mythos-5"];
 
 export function TriggerRunDialog({
   taskId,
@@ -47,14 +45,11 @@ export function TriggerRunDialog({
 
   if (!open) return null;
 
-  const tempDisabled = NO_TEMP.includes(model);
-
   async function submit() {
     setSubmitting(true);
     setError(null);
     try {
-      const params: Record<string, number> = { max_tokens: maxTokens };
-      if (!tempDisabled) params.temperature = temperature;
+      const params: Record<string, number> = { max_tokens: maxTokens, temperature };
       const run = await apiPost<RunSummary>("/runs", {
         task_id: Number(taskId),
         model,
@@ -109,16 +104,15 @@ export function TriggerRunDialog({
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label={`Temperature${tempDisabled ? " (n/a)" : ""}`}>
+            <Field label="Temperature">
               <input
                 type="number"
                 step="0.1"
                 min="0"
                 max="1"
-                disabled={tempDisabled}
                 value={temperature}
                 onChange={(e) => setTemperature(Number(e.target.value))}
-                className="h-9 w-full rounded-md border border-border-strong bg-surface px-2.5 text-sm text-fg outline-none focus:border-accent disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-faint"
+                className="h-9 w-full rounded-md border border-border-strong bg-surface px-2.5 text-sm text-fg outline-none focus:border-accent"
               />
             </Field>
             <Field label="Max tokens">

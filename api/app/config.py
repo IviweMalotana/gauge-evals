@@ -34,16 +34,18 @@ class Settings(BaseSettings):
             v = "postgresql+psycopg://" + v[len("postgresql://") :]
         return v
 
-    # Anthropic. When empty, the runner uses a deterministic mock executor so
+    # Model provider: Kimi (Moonshot AI), via its OpenAI-compatible API.
+    # When the key is empty, the runner uses a deterministic mock executor so
     # the product is fully usable with zero setup (DEMO MODE).
-    anthropic_api_key: str = ""
-    gauge_default_model: str = "claude-haiku-4-5-20251001"
+    moonshot_api_key: str = ""
+    moonshot_base_url: str = "https://api.moonshot.ai/v1"
+    gauge_default_model: str = "kimi-k2.6"
 
     gauge_cors_origins: str = "http://localhost:3000"
 
     @property
-    def has_anthropic_key(self) -> bool:
-        return bool(self.anthropic_api_key.strip())
+    def has_model_key(self) -> bool:
+        return bool(self.moonshot_api_key.strip())
 
     @property
     def cors_origins(self) -> list[str]:

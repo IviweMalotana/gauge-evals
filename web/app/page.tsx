@@ -313,7 +313,7 @@ function Architecture() {
       id="architecture"
       eyebrow="The architecture"
       title="Typed end-to-end, deployable in two clicks"
-      intro="A clean split: a Next.js operator UI on Vercel, a FastAPI engine on Railway, Postgres for the run record, and the Anthropic API for execution and judging — with a deterministic mock so the demo needs no key."
+      intro="A clean split: a Next.js operator UI on Vercel, a FastAPI engine on Railway, Postgres for the run record, and the Kimi (Moonshot) API for execution and judging — with a deterministic mock so the demo needs no key."
     >
       <div className="rounded-lg border border-border bg-surface p-6 shadow-xs sm:p-8">
         <div className="flex flex-col items-stretch gap-4 lg:flex-row lg:items-center">
@@ -327,7 +327,7 @@ function Architecture() {
           <ArchBox
             title="api/"
             subtitle="FastAPI · Python 3.12"
-            lines={["Run engine + scorers", "Anthropic SDK / mock", "SQLAlchemy + Alembic"]}
+            lines={["Run engine + scorers", "Kimi (Moonshot) / mock", "SQLAlchemy + Alembic"]}
             tag="Railway"
             accent
           />
@@ -342,7 +342,7 @@ function Architecture() {
         <div className="mt-4 flex justify-center">
           <div className="flex items-center gap-2 rounded-md border border-dashed border-accent-border bg-accent-soft px-3 py-1.5 text-xs text-accent">
             <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-            api/ → Anthropic Claude API (execution + LLM-as-judge) · falls back to a deterministic
+            api/ → Kimi (Moonshot) API (execution + LLM-as-judge) · falls back to a deterministic
             mock when no key is set
           </div>
         </div>
@@ -412,7 +412,7 @@ function Outcome() {
   const metrics = [
     { value: "—", label: "Regressions caught before shipping", hint: "e.g. “6 in the first month”" },
     { value: "—", label: "Faster eval iteration vs. manual review", hint: "e.g. “~10× faster”" },
-    { value: "—", label: "Cost per full eval run", hint: "e.g. “$0.01 on Sonnet”" },
+    { value: "—", label: "Cost per full eval run", hint: "e.g. “$0.004 on Kimi K2.6”" },
     { value: "—", label: "Prompt/model changes evaluated", hint: "e.g. “40+ across 3 tasks”" },
   ];
   return (
@@ -456,7 +456,7 @@ function TechStack() {
     "SQLAlchemy",
     "Alembic",
     "PostgreSQL",
-    "Anthropic Claude",
+    "Kimi (Moonshot)",
     "Recharts",
     "Vercel",
     "Railway",

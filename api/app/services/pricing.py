@@ -1,22 +1,24 @@
 """Model pricing and cost helpers.
 
-Prices are USD per million tokens (MTok). These mirror Anthropic's published
-per-tier pricing; adjust here if pricing changes. Unknown models fall back to a
-mid-tier estimate so cost is never silently zero.
+Prices are USD per million tokens (MTok). These mirror Kimi (Moonshot AI)
+published per-model pricing; adjust here if pricing changes. Unknown models
+fall back to a mid-tier estimate so cost is never silently zero.
 """
 
 from __future__ import annotations
 
 # model id (or prefix) -> (input $/MTok, output $/MTok)
 PRICING: dict[str, tuple[float, float]] = {
-    "claude-opus-4": (15.0, 75.0),
-    "claude-sonnet-4": (3.0, 15.0),
-    "claude-haiku-4": (1.0, 5.0),
-    "claude-3-5-haiku": (0.80, 4.0),
-    "claude-3-5-sonnet": (3.0, 15.0),
+    "kimi-k2.7-code": (0.95, 4.0),
+    "kimi-k2.6": (0.95, 4.0),
+    "kimi-k2.5": (0.60, 3.0),
+    "kimi-k2": (0.60, 2.5),  # legacy k2 family
+    "moonshot-v1-128k": (2.0, 5.0),
+    "moonshot-v1-32k": (1.0, 3.0),
+    "moonshot-v1-8k": (0.20, 2.0),
 }
 
-_FALLBACK = (3.0, 15.0)
+_FALLBACK = (0.95, 4.0)
 
 
 def price_for(model: str) -> tuple[float, float]:

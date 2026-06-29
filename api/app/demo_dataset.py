@@ -269,7 +269,7 @@ CASES: list[dict] = [
 RUNS: list[dict] = [
     {
         "label": "Baseline — terse prompt",
-        "model": "claude-haiku-4-5-20251001",
+        "model": "kimi-k2.5",
         "params": {"temperature": 0.0, "max_tokens": 400},
         "days_ago": 18,
         "notes": "First pass. Short system prompt, no examples.",
@@ -281,7 +281,7 @@ RUNS: list[dict] = [
     },
     {
         "label": "Few-shot examples added",
-        "model": "claude-haiku-4-5-20251001",
+        "model": "kimi-k2.5",
         "params": {"temperature": 0.0, "max_tokens": 400},
         "days_ago": 11,
         "notes": "Added two worked examples to the system prompt.",
@@ -292,11 +292,11 @@ RUNS: list[dict] = [
         },
     },
     {
-        "label": "Switched to Sonnet",
-        "model": "claude-sonnet-4-6",
+        "label": "Upgraded to Kimi K2.6",
+        "model": "kimi-k2.6",
         "params": {"temperature": 0.0, "max_tokens": 400},
         "days_ago": 4,
-        "notes": "Same prompt, upgraded model. Big jump — but one regression.",
+        "notes": "Same prompt, upgraded from K2.5 to K2.6. Big jump — but one regression.",
         "outcomes": {
             0: "correct", 1: "correct", 2: "correct", 3: "correct", 4: "correct",
             5: "correct", 6: "minor", 7: "minor", 8: "correct", 9: "correct",
@@ -305,7 +305,7 @@ RUNS: list[dict] = [
     },
     {
         "label": "Tightened JSON instructions",
-        "model": "claude-sonnet-4-6",
+        "model": "kimi-k2.6",
         "params": {"temperature": 0.0, "max_tokens": 400},
         "days_ago": 1,
         "notes": "Explicit null-handling and budget-parsing rules. Fixed the regression.",

@@ -1,7 +1,8 @@
 """Task executors — turn a (system, prompt) into model output + usage metrics.
 
 Two implementations:
-  - AnthropicExecutor: calls the real Anthropic API (requires ANTHROPIC_API_KEY).
+  - KimiExecutor: calls the real Kimi (Moonshot AI) API via its OpenAI-compatible
+    endpoint (requires MOONSHOT_API_KEY).
   - MockExecutor: deterministic, no network. Used in DEMO MODE so triggered runs
     work with zero setup. When given a case's expected output as a `hint`, it
     produces a realistic answer with small, deterministic perturbations — so a
@@ -27,9 +28,6 @@ from app.services.pricing import cost_usd
 # during a triggered demo run. Override with GAUGE_MOCK_DELAY_MS=0 to disable.
 _MOCK_DELAY_S = int(os.getenv("GAUGE_MOCK_DELAY_MS", "140")) / 1000
 
-# Models that reject sampling params (temperature/top_p/top_k) — see Anthropic API.
-_NO_SAMPLING_PREFIXES = ("claude-opus-4-7", "claude-opus-4-8", "claude-fable-5", "claude-mythos-5")
-
 
 class GaugeExecutionError(RuntimeError):
     """Raised when a single case fails to execute."""
@@ -46,42 +44,43 @@ class CallResult:
     is_mock: bool
 
 
-def _supports_sampling(model: str) -> bool:
-    return not model.startswith(_NO_SAMPLING_PREFIXES)
+class KimiExecutor:
+    """Calls Kimi (Moonshot AI) through its OpenAI-compatible Chat Completions API."""
 
-
-class AnthropicExecutor:
     is_mock = False
 
-    def __init__(self, api_key: str):
-        from anthropic import Anthropic  # noqa: PLC0415 (lazy import)
+    def __init__(self, api_key: str, base_url: str):
+        from openai import OpenAI  # noqa: PLC0415 (lazy import)
 
-        self._client = Anthropic(api_key=api_key)
+        self._client = OpenAI(api_key=api_key, base_url=base_url)
 
     def run(self, *, system: str, prompt: str, model: str, params: dict, hint: str | None = None) -> CallResult:
-        import anthropic  # noqa: PLC0415
+        import openai  # noqa: PLC0415
 
         kwargs: dict = {
             "model": model,
             "max_tokens": int(params.get("max_tokens", 1024)),
-            "system": system,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
         }
-        if _supports_sampling(model) and params.get("temperature") is not None:
+        if params.get("temperature") is not None:
             kwargs["temperature"] = float(params["temperature"])
 
         started = time.perf_counter()
         try:
-            resp = self._client.messages.create(**kwargs)
-        except anthropic.APIStatusError as e:  # 4xx/5xx
-            raise GaugeExecutionError(f"Anthropic API error {e.status_code}: {e.message}") from e
-        except anthropic.APIConnectionError as e:
+            resp = self._client.chat.completions.create(**kwargs)
+        except openai.APIStatusError as e:  # 4xx/5xx
+            raise GaugeExecutionError(f"Kimi API error {e.status_code}: {e.message}") from e
+        except openai.APIConnectionError as e:
             raise GaugeExecutionError(f"Connection error: {e}") from e
         latency_ms = int((time.perf_counter() - started) * 1000)
 
-        text = "".join(b.text for b in resp.content if b.type == "text").strip()
-        in_tok = resp.usage.input_tokens
-        out_tok = resp.usage.output_tokens
+        text = (resp.choices[0].message.content or "").strip()
+        usage = resp.usage
+        in_tok = usage.prompt_tokens if usage else 0
+        out_tok = usage.completion_tokens if usage else 0
         return CallResult(
             output=text,
             input_tokens=in_tok,
@@ -141,6 +140,6 @@ class MockExecutor:
 
 def get_executor(*, force_mock: bool = False):
     settings = get_settings()
-    if force_mock or not settings.has_anthropic_key:
+    if force_mock or not settings.has_model_key:
         return MockExecutor()
-    return AnthropicExecutor(settings.anthropic_api_key)
+    return KimiExecutor(settings.moonshot_api_key, settings.moonshot_base_url)

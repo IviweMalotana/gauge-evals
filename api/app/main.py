@@ -34,11 +34,11 @@ def health() -> dict[str, str]:
 def meta() -> dict[str, object]:
     """Surface runtime capabilities to the frontend.
 
-    `demo_mode` is True when no Anthropic key is configured: triggered runs
+    `demo_mode` is True when no Kimi (Moonshot) key is configured: triggered runs
     use the deterministic mock executor instead of calling the real model.
     """
     return {
-        "demo_mode": not settings.has_anthropic_key,
+        "demo_mode": not settings.has_model_key,
         "default_model": settings.gauge_default_model,
     }
 

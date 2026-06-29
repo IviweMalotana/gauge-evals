@@ -12,7 +12,7 @@ Each scorer config is `{name, type, weight, config}` and produces a result dict
 `{name, type, weight, score, passed, detail?|reasoning?}`. `score_output`
 aggregates them into a weighted score and an overall pass/fail.
 
-The LLM judge runs against the real Anthropic model when a key is configured;
+The LLM judge runs against the real Kimi (Moonshot) model when a key is configured;
 in DEMO MODE it falls back to a deterministic heuristic judge so the rubric
 scorer still produces a believable score and reasoning with zero setup.
 """
@@ -192,7 +192,7 @@ def _score_llm_judge(
 ) -> dict:
     threshold = float(config.get("pass_threshold", 0.7))
     if judge_executor is not None and not getattr(judge_executor, "is_mock", True):
-        model = config.get("model") or judge_model or "claude-haiku-4-5-20251001"
+        model = config.get("model") or judge_model or "kimi-k2.6"
         try:
             call = judge_executor.run(
                 system=_JUDGE_SYSTEM,

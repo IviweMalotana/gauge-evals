@@ -33,10 +33,10 @@ Gauge ships a **public demo**: the seed script loads a realistic task with a
 full dataset and several historical runs, so every screen — dashboards, run
 views, and the diff — is populated and clickable immediately.
 
-When `ANTHROPIC_API_KEY` is **unset**, triggered runs use a deterministic
+When `MOONSHOT_API_KEY` is **unset**, triggered runs use a deterministic
 **mock executor** (no network, no cost) so the whole product works end-to-end
 with nothing to configure. Set the key and triggered runs call the real
-Anthropic API instead.
+Kimi (Moonshot) API instead.
 
 ---
 
@@ -46,7 +46,7 @@ Anthropic API instead.
 ┌──────────────────────────┐         ┌───────────────────────────┐
 │  web/  Next.js 15 (App    │  HTTP   │  api/  FastAPI (Python 3.12)│
 │  Router) + TypeScript +   │ ──────► │  • run engine + scorers     │
-│  Tailwind. Operator UI:   │  JSON   │  • Anthropic SDK / mock     │
+│  Tailwind. Operator UI:   │  JSON   │  • Kimi (Moonshot) / mock   │
 │  tasks, runs, diff, trends│ ◄────── │  • SQLAlchemy + Alembic     │
 └──────────────────────────┘         └─────────────┬─────────────┘
                                                     │
@@ -96,7 +96,7 @@ Then open **http://localhost:3000**.
 
 Run `make help` to see all commands (`db-up`, `migrate`, `seed`, `api-test`, …).
 
-> To run against the real Anthropic API, set `ANTHROPIC_API_KEY` in `.env`
+> To run against the real Kimi API, set `MOONSHOT_API_KEY` in `.env`
 > before triggering a run. Without it, Gauge stays in mock mode.
 
 ---
@@ -120,7 +120,7 @@ its URL for the frontend's env var.
    - `release:` runs `alembic upgrade head` (migrations) on every deploy.
    - `web:` starts `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
 5. **Set environment variables** (see the table below). At minimum set
-   `GAUGE_CORS_ORIGINS` to your Vercel URL. Add `ANTHROPIC_API_KEY` to run
+   `GAUGE_CORS_ORIGINS` to your Vercel URL. Add `MOONSHOT_API_KEY` to run
    against the real model; leave it unset to stay in mock/demo mode.
 6. **Seed the demo once** (optional but recommended for a clickable demo):
    from the service shell, run `python -m app.seed`.
@@ -141,8 +141,9 @@ its URL for the frontend's env var.
 | Variable                   | Service | Required | Notes                                                        |
 | -------------------------- | ------- | -------- | ------------------------------------------------------------ |
 | `DATABASE_URL`             | api     | yes      | Postgres URL. `postgresql://` / `postgres://` accepted.      |
-| `ANTHROPIC_API_KEY`        | api     | no       | Unset → mock/demo mode. Set → real model calls.              |
-| `GAUGE_DEFAULT_MODEL`      | api     | no       | Default model for runs (default `claude-haiku-4-5-20251001`).|
+| `MOONSHOT_API_KEY`         | api     | no       | Kimi (Moonshot) key. Unset → mock/demo mode. Set → real calls.|
+| `MOONSHOT_BASE_URL`        | api     | no       | OpenAI-compatible base URL (default api.moonshot.ai/v1).      |
+| `GAUGE_DEFAULT_MODEL`      | api     | no       | Default model for runs (default `kimi-k2.6`).|
 | `GAUGE_CORS_ORIGINS`       | api     | yes\*    | Comma-separated allowed web origins (your Vercel URL).       |
 | `GAUGE_MOCK_DELAY_MS`      | api     | no       | Per-case pacing for the mock executor (default 140).         |
 | `NEXT_PUBLIC_API_BASE_URL` | web     | yes      | Base URL of the backend; read at build time.                 |
@@ -153,9 +154,9 @@ its URL for the frontend's env var.
 
 - **Migrations** run automatically via the Railway `release` phase; no manual
   step needed on deploy.
-- **Demo with zero cost**: leave `ANTHROPIC_API_KEY` unset — triggered runs use
+- **Demo with zero cost**: leave `MOONSHOT_API_KEY` unset — triggered runs use
   the deterministic mock and the seeded history populates every screen.
-- **Going live**: set `ANTHROPIC_API_KEY`; new runs then call the real model and
+- **Going live**: set `MOONSHOT_API_KEY`; new runs then call the real model and
   the LLM-as-judge, while historical seeded runs remain for comparison.
 
 ## Environment variables
@@ -165,7 +166,7 @@ See [`.env.example`](./.env.example) for the authoritative list. Summary:
 | Variable                   | Used by  | Purpose                                            |
 | -------------------------- | -------- | -------------------------------------------------- |
 | `DATABASE_URL`             | api      | Postgres connection string                         |
-| `ANTHROPIC_API_KEY`        | api      | Enables real model calls; unset → mock mode        |
+| `MOONSHOT_API_KEY`         | api      | Kimi (Moonshot) key; unset → mock mode             |
 | `GAUGE_DEFAULT_MODEL`      | api      | Default model for runs                             |
 | `GAUGE_CORS_ORIGINS`       | api      | Allowed web origins (comma-separated)              |
 | `NEXT_PUBLIC_API_BASE_URL` | web      | Base URL of the backend                            |
@@ -178,7 +179,7 @@ Built milestone by milestone:
 
 - [x] **M0** — Monorepo scaffold, design system, tooling
 - [x] **M1** — DB schema + seeded demo dataset & historical runs
-- [x] **M2** — Run engine (Anthropic + deterministic mock)
+- [x] **M2** — Run engine (Kimi + deterministic mock)
 - [x] **M3** — Scorers, incl. LLM-as-judge with shown reasoning
 - [x] **M4** — Run view UI
 - [x] **M5** — Run comparison / diff (hero feature)
