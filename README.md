@@ -131,5 +131,5 @@ Built milestone by milestone:
 - [x] **M4** — Run view UI
 - [x] **M5** — Run comparison / diff (hero feature)
 - [x] **M6** — Trend dashboard + trigger-run flow
-- [ ] **M7** — Case-study landing page
+- [x] **M7** — Case-study landing page
 - [ ] **M8** — Deploy notes
