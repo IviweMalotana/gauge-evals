@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +22,17 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "postgresql+psycopg://gauge:gauge@localhost:5432/gauge"
+
+    @field_validator("database_url")
+    @classmethod
+    def _use_psycopg_driver(cls, v: str) -> str:
+        # Managed hosts (Railway, Heroku, …) hand out `postgresql://` or the
+        # legacy `postgres://`. Pin the psycopg3 driver so SQLAlchemy uses it.
+        if v.startswith("postgres://"):
+            v = "postgresql://" + v[len("postgres://") :]
+        if v.startswith("postgresql://"):
+            v = "postgresql+psycopg://" + v[len("postgresql://") :]
+        return v
 
     # Anthropic. When empty, the runner uses a deterministic mock executor so
     # the product is fully usable with zero setup (DEMO MODE).

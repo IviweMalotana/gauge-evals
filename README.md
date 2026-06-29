@@ -103,8 +103,60 @@ Run `make help` to see all commands (`db-up`, `migrate`, `seed`, `api-test`, …
 
 ## Deploy
 
-Deployment notes for **Vercel** (frontend) and **Railway** (backend + Postgres),
-including the full env-var list, land in Milestone 8.
+Gauge deploys as two services from this one repo: the **backend + Postgres on
+Railway** and the **frontend on Vercel**. Deploy the backend first so you have
+its URL for the frontend's env var.
+
+### 1. Backend + database → Railway
+
+1. **New project → Deploy from GitHub repo**, pointing at this repo.
+2. **Set the service root directory to `api/`** (Settings → Root Directory).
+   Railway auto-detects Python and installs with `uv`.
+3. **Add a Postgres database** to the project (New → Database → PostgreSQL).
+   Railway exposes its connection string as `DATABASE_URL` — reference it on
+   the API service as `DATABASE_URL=${{Postgres.DATABASE_URL}}`. The app
+   normalises the `postgresql://` scheme to the `psycopg` driver automatically.
+4. The [`api/Procfile`](./api/Procfile) wires the lifecycle:
+   - `release:` runs `alembic upgrade head` (migrations) on every deploy.
+   - `web:` starts `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+5. **Set environment variables** (see the table below). At minimum set
+   `GAUGE_CORS_ORIGINS` to your Vercel URL. Add `ANTHROPIC_API_KEY` to run
+   against the real model; leave it unset to stay in mock/demo mode.
+6. **Seed the demo once** (optional but recommended for a clickable demo):
+   from the service shell, run `python -m app.seed`.
+
+### 2. Frontend → Vercel
+
+1. **New Project → import this repo.**
+2. **Set the root directory to `web/`.** Vercel auto-detects Next.js (build
+   `next build`, output handled automatically).
+3. **Set `NEXT_PUBLIC_API_BASE_URL`** to your Railway backend URL
+   (e.g. `https://gauge-api.up.railway.app`). This is read at build time, so
+   redeploy after changing it.
+4. Deploy. Then add the resulting Vercel URL to the backend's
+   `GAUGE_CORS_ORIGINS` and redeploy the backend.
+
+### Environment variables
+
+| Variable                   | Service | Required | Notes                                                        |
+| -------------------------- | ------- | -------- | ------------------------------------------------------------ |
+| `DATABASE_URL`             | api     | yes      | Postgres URL. `postgresql://` / `postgres://` accepted.      |
+| `ANTHROPIC_API_KEY`        | api     | no       | Unset → mock/demo mode. Set → real model calls.              |
+| `GAUGE_DEFAULT_MODEL`      | api     | no       | Default model for runs (default `claude-haiku-4-5-20251001`).|
+| `GAUGE_CORS_ORIGINS`       | api     | yes\*    | Comma-separated allowed web origins (your Vercel URL).       |
+| `GAUGE_MOCK_DELAY_MS`      | api     | no       | Per-case pacing for the mock executor (default 140).         |
+| `NEXT_PUBLIC_API_BASE_URL` | web     | yes      | Base URL of the backend; read at build time.                 |
+
+\* Required in production so the browser can call the API cross-origin.
+
+### Notes
+
+- **Migrations** run automatically via the Railway `release` phase; no manual
+  step needed on deploy.
+- **Demo with zero cost**: leave `ANTHROPIC_API_KEY` unset — triggered runs use
+  the deterministic mock and the seeded history populates every screen.
+- **Going live**: set `ANTHROPIC_API_KEY`; new runs then call the real model and
+  the LLM-as-judge, while historical seeded runs remain for comparison.
 
 ## Environment variables
 
@@ -132,4 +184,4 @@ Built milestone by milestone:
 - [x] **M5** — Run comparison / diff (hero feature)
 - [x] **M6** — Trend dashboard + trigger-run flow
 - [x] **M7** — Case-study landing page
-- [ ] **M8** — Deploy notes
+- [x] **M8** — Deploy notes
