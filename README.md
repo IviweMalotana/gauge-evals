@@ -1,2 +1,113 @@
-# gauge-evals
-Lightweight harness for evaluating and regression-testing LLM apps
+# Gauge
+
+From stakeholder request to pull request.
+
+A company registers, invites collaborators and assigns them roles, and connects
+GitHub via OAuth. Stakeholders file requests. Each request runs through an
+agent pipeline:
+
+```
+UX check → BRD (Given/When/Then) → [human approval] → Plan → Build → Test → Pull request
+```
+
+- **UX check** — classifies the request as a bug or a feature. For a bug it
+  attempts to reproduce by driving the app (Playwright / a browser MCP); for a
+  feature it scopes the change against the code.
+- **BRD** — writes business-facing requirements in plain **Given / When / Then**
+  Gherkin plus acceptance criteria. Uses **Claude (Sonnet)** via the Anthropic
+  API.
+- **Human approval** — a reviewer can **accept**, **reject**, or **alter** the
+  BRD. Nothing is built until this gate passes.
+- **Plan → Build → Test → PR** — planner, builder, and tester agents take the
+  approved BRD the rest of the way to an open pull request.
+
+> **Status of this build.** Auth, companies, roles, GitHub OAuth, request
+> intake, the full pipeline state machine, the human-approval gate, and the
+> audit log are implemented. The **BRD agent makes real Anthropic calls.** The
+> UX-check (Playwright), planner, builder, tester, and PR-creation stages are
+> **structured stubs behind real interfaces** — each returns realistic data and
+> is designed to be swapped for a real implementation without touching the
+> orchestrator. See the `TODO(...)` markers in `src/lib/agents/*`.
+
+## Stack
+
+- Next.js 14 (App Router, TypeScript), React Server Components + server actions
+- Prisma + SQLite (swap the datasource `provider` to `postgresql` for Postgres)
+- Self-contained auth: bcrypt + signed-JWT session cookie (`jose`)
+- GitHub OAuth web flow (no external auth library)
+- Anthropic SDK for the BRD agent
+
+## Quick start
+
+```bash
+npm install
+cp .env.example .env        # fill in secrets (see below)
+npm run setup               # prisma db push + seed a demo company
+npm run dev                 # http://localhost:3000
+```
+
+Demo logins (from the seed):
+
+| Role         | Email             | Password      |
+| ------------ | ----------------- | ------------- |
+| Owner        | ada@acme.test     | password123   |
+| Collaborator | grace@acme.test   | password123   |
+| Stakeholder  | stan@acme.test    | password123   |
+
+Or register a fresh company at `/register`.
+
+## Configuration
+
+See `.env.example`. Notable variables:
+
+- `DATABASE_URL` — SQLite file by default.
+- `AUTH_SECRET` — signs session cookies. Use a long random string.
+- `APP_URL` — base URL for OAuth callbacks.
+- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` — from a GitHub OAuth App.
+  Set the callback URL to `${APP_URL}/api/oauth/github/callback`.
+- `ANTHROPIC_API_KEY` — enables real BRD generation. Without it the BRD agent
+  falls back to a deterministic template so the pipeline still runs end-to-end.
+- `ANTHROPIC_MODEL` — defaults to a Sonnet model; override as needed.
+
+## How it fits together
+
+```
+src/
+  app/
+    (auth)/            register + login
+    (app)/             authenticated shell (dashboard, requests, members, settings)
+    api/oauth/github/  OAuth start + callback
+    actions/           server actions (auth, requests, members, settings)
+  components/          TopBar, AddMemberForm, BrdApproval
+  lib/
+    auth.ts            sessions, password hashing, role helpers
+    db.ts              Prisma client
+    anthropic.ts       Anthropic client + JSON completion helper
+    agents/            uxCheck, brd, planner, builder, tester, pr, orchestrator
+prisma/
+  schema.prisma        Company, User, Membership, Request + pipeline artifacts
+  seed.ts              demo company
+```
+
+The pipeline is orchestrated in `src/lib/agents/orchestrator.ts`, split into
+`runToApproval` (phase 1, up to the human gate) and `runAfterApproval`
+(phase 2, build through PR). Both run inline today; moving them to a background
+queue is the natural next step for production.
+
+## Roles
+
+| Role         | Can do                                                       |
+| ------------ | ----------------------------------------------------------- |
+| Owner        | Everything, incl. company settings and member management    |
+| Admin        | Manage members & settings, run the pipeline                 |
+| Collaborator | File and run requests                                        |
+| Stakeholder  | File requests and approve/reject                            |
+
+## Roadmap (swap the stubs)
+
+- Real Playwright/MCP bug reproduction in `agents/uxCheck.ts`
+- Code-aware planner and a real code-writing builder (worktree/sub-agent)
+- Real test runner (unit + Gherkin scenarios via Playwright) in `agents/tester.ts`
+- Real PR creation in `agents/pr.ts` using the stored company token
+- Background job queue for the pipeline instead of inline execution
+- Encrypt `githubAccessToken` at rest
