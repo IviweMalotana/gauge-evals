@@ -1,0 +1,201 @@
+// Gauge Evals — data model
+//
+// A Company registers with an owner. Owners/admins invite collaborators and
+// assign roles. Stakeholders file Requests. Each Request runs through a
+// pipeline of agent stages, produces artifacts (UX check, BRD, plan, build,
+// test, PR), and pauses for human approval after the BRD is drafted.
+//
+// SQLite by default for zero-setup local dev. To move to Postgres, change
+// `provider` to "postgresql" and update DATABASE_URL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity & tenancy
+// ---------------------------------------------------------------------------
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // GitHub connection (per-company repo the pipeline targets)
+  githubConnected    Boolean @default(false)
+  githubLogin        String?
+  githubAccessToken  String? // encrypted-at-rest in production; stored plainly in dev
+  githubDefaultRepo  String? // e.g. "acme/webapp"
+  appBaseUrl         String? // where the company's app runs; UX-check drives it
+
+  members  Membership[]
+  requests Request[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships Membership[]
+  createdRequests Request[] @relation("RequestCreatedBy")
+  decisions   Approval[]
+}
+
+// NOTE: SQLite doesn't support native enums, so role/type/status/decision are
+// stored as strings. The allowed values live in `src/lib/domain.ts` as
+// string-literal union types (Role, RequestType, RequestStatus,
+// ApprovalDecision). Switch the datasource to Postgres to use real enums.
+
+model Membership {
+  id        String   @id @default(cuid())
+  role      String   @default("COLLABORATOR") // Role
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+}
+
+// ---------------------------------------------------------------------------
+// Requests & pipeline
+// ---------------------------------------------------------------------------
+
+model Request {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  type        String   @default("UNKNOWN") // RequestType
+  status      String   @default("INTAKE") // RequestStatus
+  priority    String   @default("normal") // low | normal | high
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User   @relation("RequestCreatedBy", fields: [createdById], references: [id])
+
+  uxCheck   UxCheck?
+  brd       Brd?
+  plan      Plan?
+  build     Build?
+  testRun   TestRun?
+  pullReq   PullRequestRef?
+  approvals Approval[]
+  events    PipelineEvent[]
+
+  @@index([companyId])
+  @@index([status])
+}
+
+// UX-check agent output: classifies bug vs feature and either reproduces the
+// bug (Playwright/MCP) or analyzes the feature against the code.
+model UxCheck {
+  id             String   @id @default(cuid())
+  requestId      String   @unique
+  request        Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  classifiedType String // RequestType (BUG | FEATURE)
+  reproduced     Boolean  @default(false) // for bugs: was it reproduced?
+  summary        String   // human-readable finding
+  steps          String   // JSON array of reproduction / investigation steps
+  screenshots    String   // JSON array of artifact paths (stubbed for now)
+  createdAt      DateTime @default(now())
+}
+
+// BRD agent output: business/UX-facing requirements in Gherkin
+// (Given / When / Then) plus a plain-language narrative.
+model Brd {
+  id                 String   @id @default(cuid())
+  requestId          String   @unique
+  request            Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  narrative          String   // plain-language BRD, BA/UX voice (no dev jargon)
+  gherkin            String   // Feature: ... Scenario ... Given/When/Then
+  acceptanceCriteria String   // JSON array of acceptance-criteria bullet strings
+  model              String   // which Anthropic model produced it
+  version            Int      @default(1)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Approval {
+  id        String   @id @default(cuid())
+  requestId String
+  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  decision  String // ApprovalDecision (ACCEPTED | REJECTED | ALTERED)
+  note      String? // reason / change notes
+  createdAt DateTime @default(now())
+
+  @@index([requestId])
+}
+
+model Plan {
+  id        String   @id @default(cuid())
+  requestId String   @unique
+  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  summary   String
+  steps     String   // JSON array of plan steps
+  files     String   // JSON array of files the builder is expected to touch
+  createdAt DateTime @default(now())
+}
+
+model Build {
+  id         String   @id @default(cuid())
+  requestId  String   @unique
+  request    Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  branch     String
+  summary    String
+  diff       String   // unified diff (stubbed for now)
+  createdAt  DateTime @default(now())
+}
+
+model TestRun {
+  id        String   @id @default(cuid())
+  requestId String   @unique
+  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  passed    Boolean  @default(false)
+  summary   String
+  output    String   // JSON array of test result lines
+  createdAt DateTime @default(now())
+}
+
+model PullRequestRef {
+  id        String   @id @default(cuid())
+  requestId String   @unique
+  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  number    Int?
+  url       String
+  title     String
+  createdAt DateTime @default(now())
+}
+
+// Append-only audit trail of everything the pipeline does.
+model PipelineEvent {
+  id        String   @id @default(cuid())
+  requestId String
+  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  stage     String   // e.g. "ux_check", "brd", "approval", "planner"
+  level     String   @default("info") // info | warn | error
+  message   String
+  data      String? // JSON blob of stage detail
+  createdAt DateTime @default(now())
+
+  @@index([requestId])
+}
