@@ -56,6 +56,13 @@ Demo logins (from the seed):
 
 Or register a fresh company at `/register`.
 
+## Deploying
+
+See **[DEPLOY.md](./DEPLOY.md)** for hosting (Railway + generic). Key point:
+production must use **Postgres**, not SQLite — flip the provider with
+`scripts/db-provider.sh postgresql` and set `DATABASE_URL`. Secrets
+(`ANTHROPIC_API_KEY`, `AUTH_SECRET`, GitHub OAuth) live in the host's env vars.
+
 ## Configuration
 
 See `.env.example`. Notable variables:
