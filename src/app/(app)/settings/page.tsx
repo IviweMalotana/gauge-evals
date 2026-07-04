@@ -2,7 +2,7 @@ import { requireUser } from "@/lib/guards";
 import { db } from "@/lib/db";
 import { can } from "@/lib/auth";
 import { features } from "@/lib/env";
-import { disconnectGithub, setDefaultRepo } from "@/app/actions/settings";
+import { disconnectGithub, setAppUrl, setDefaultRepo } from "@/app/actions/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -96,13 +96,44 @@ export default async function SettingsPage({
       </div>
 
       <div className="card">
+        <h3 style={{ marginTop: 0 }}>App under test</h3>
+        <p className="small muted">
+          The URL of your running app. When a request is a bug, the UX-check
+          agent drives a real headless browser against this URL (or a link in the
+          request) to look for failure signals and capture a screenshot.
+        </p>
+        {manage ? (
+          <form action={setAppUrl} className="row">
+            <input
+              name="appBaseUrl"
+              placeholder="https://staging.acme.com"
+              defaultValue={company?.appBaseUrl ?? ""}
+              style={{ maxWidth: 360 }}
+            />
+            <button className="btn secondary" type="submit">
+              Save app URL
+            </button>
+          </form>
+        ) : (
+          <p className="small muted">
+            {company?.appBaseUrl ? (
+              <span className="mono">{company.appBaseUrl}</span>
+            ) : (
+              "Not set. Ask an owner or admin to add it."
+            )}
+          </p>
+        )}
+      </div>
+
+      <div className="card">
         <h3 style={{ marginTop: 0 }}>Agents</h3>
         <p className="small muted">
           Acceptance-criteria drafting uses Claude (Sonnet) when{" "}
           <span className="mono">ANTHROPIC_API_KEY</span> is set — currently{" "}
           <strong>{features.anthropic ? "enabled" : "using the template fallback"}</strong>.
-          UX-check (Playwright), planner, builder, and tester run as structured
-          stubs in this build.
+          The UX-check agent drives a <strong>real headless browser</strong> to
+          reproduce bugs. Planner, builder, and tester run as structured stubs in
+          this build.
         </p>
       </div>
     </div>

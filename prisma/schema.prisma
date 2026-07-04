@@ -33,6 +33,7 @@ model Company {
   githubLogin        String?
   githubAccessToken  String? // encrypted-at-rest in production; stored plainly in dev
   githubDefaultRepo  String? // e.g. "acme/webapp"
+  appBaseUrl         String? // where the company's app runs; UX-check drives it
 
   members  Membership[]
   requests Request[]

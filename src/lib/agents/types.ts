@@ -12,6 +12,8 @@ export interface AgentContext {
   request: Request;
   /** Company GitHub repo the pipeline targets, if connected. */
   repo?: string | null;
+  /** Base URL of the company's running app, for the UX-check browser pass. */
+  appBaseUrl?: string | null;
   log: (message: string, data?: unknown) => Promise<void>;
 }
 

@@ -23,11 +23,12 @@ import { runPr } from "./pr";
 async function buildContext(request: Request): Promise<AgentContext> {
   const company = await db.company.findUnique({
     where: { id: request.companyId },
-    select: { githubDefaultRepo: true },
+    select: { githubDefaultRepo: true, appBaseUrl: true },
   });
   return {
     request,
     repo: company?.githubDefaultRepo ?? null,
+    appBaseUrl: company?.appBaseUrl ?? null,
     log: (message, data) =>
       logEvent(request.id, statusToStage(request.status), message, data),
   };
