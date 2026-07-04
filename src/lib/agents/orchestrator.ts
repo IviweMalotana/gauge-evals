@@ -23,12 +23,13 @@ import { runPr } from "./pr";
 async function buildContext(request: Request): Promise<AgentContext> {
   const company = await db.company.findUnique({
     where: { id: request.companyId },
-    select: { githubDefaultRepo: true, appBaseUrl: true },
+    select: { githubDefaultRepo: true, appBaseUrl: true, githubAccessToken: true },
   });
   return {
     request,
     repo: company?.githubDefaultRepo ?? null,
     appBaseUrl: company?.appBaseUrl ?? null,
+    githubToken: company?.githubAccessToken ?? null,
     log: (message, data) =>
       logEvent(request.id, statusToStage(request.status), message, data),
   };
@@ -197,7 +198,7 @@ export async function runAfterApproval(requestId: string): Promise<void> {
     request = await setStatus(requestId, "PR_CREATED");
     ctx = await buildContext(request);
     await logEvent(requestId, "pr", "PR agent started.");
-    const pr = await runPr(ctx, build);
+    const pr = await runPr(ctx, build, brd);
     await db.pullRequestRef.upsert({
       where: { requestId },
       create: { requestId, number: pr.number, url: pr.url, title: pr.title },
