@@ -131,9 +131,10 @@ export default async function SettingsPage({
           Acceptance-criteria drafting uses Claude (Sonnet) when{" "}
           <span className="mono">ANTHROPIC_API_KEY</span> is set — currently{" "}
           <strong>{features.anthropic ? "enabled" : "using the template fallback"}</strong>.
-          The UX-check agent drives a <strong>real headless browser</strong> to
-          reproduce bugs. Planner, builder, and tester run as structured stubs in
-          this build.
+          The BRD and planner agents use Claude; the UX-check agent drives a{" "}
+          <strong>real headless browser</strong> to reproduce bugs; and the PR
+          agent opens a <strong>real pull request</strong> when GitHub is
+          connected. Builder and tester run as structured stubs in this build.
         </p>
       </div>
     </div>
