@@ -161,7 +161,7 @@ export async function runAfterApproval(requestId: string): Promise<void> {
     request = await setStatus(requestId, "BUILDING");
     ctx = await buildContext(request);
     await logEvent(requestId, "builder", "Builder agent started.");
-    const build = await runBuilder(ctx, plan);
+    const build = await runBuilder(ctx, plan, brd);
     await db.build.upsert({
       where: { requestId },
       create: { requestId, branch: build.branch, summary: build.summary, diff: build.diff },

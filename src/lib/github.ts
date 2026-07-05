@@ -1,17 +1,17 @@
 /**
- * Minimal GitHub REST client for opening pull requests with the company's
- * stored OAuth token. No SDK — just the handful of calls we need.
+ * Minimal GitHub REST client for the pipeline. No SDK — just the handful of
+ * calls the builder and PR agents need, exposed as small composable operations.
  */
 
 const API = "https://api.github.com";
 
-interface GhOpts {
+export interface GhClient {
   token: string;
   repo: string; // "owner/name"
 }
 
 async function gh<T>(
-  opts: GhOpts,
+  c: GhClient,
   method: string,
   path: string,
   body?: unknown
@@ -19,7 +19,7 @@ async function gh<T>(
   const res = await fetch(`${API}${path}`, {
     method,
     headers: {
-      Authorization: `Bearer ${opts.token}`,
+      Authorization: `Bearer ${c.token}`,
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
       "X-GitHub-Api-Version": "2022-11-28",
@@ -33,19 +33,104 @@ async function gh<T>(
   return (await res.json()) as T;
 }
 
+/** The repo's default branch name and its head commit sha. */
+export async function getDefaultBranch(
+  c: GhClient
+): Promise<{ base: string; baseSha: string }> {
+  const repoInfo = await gh<{ default_branch: string }>(c, "GET", `/repos/${c.repo}`);
+  const base = repoInfo.default_branch;
+  const ref = await gh<{ object: { sha: string } }>(
+    c,
+    "GET",
+    `/repos/${c.repo}/git/ref/heads/${encodeURIComponent(base)}`
+  );
+  return { base, baseSha: ref.object.sha };
+}
+
+/** Create `branch` at `sha` if it doesn't already exist. */
+export async function ensureBranch(
+  c: GhClient,
+  branch: string,
+  sha: string
+): Promise<void> {
+  try {
+    await gh(c, "POST", `/repos/${c.repo}/git/refs`, {
+      ref: `refs/heads/${branch}`,
+      sha,
+    });
+  } catch (err) {
+    if (!String(err).includes("Reference already exists")) throw err;
+  }
+}
+
+/** Fetch a file's text + blob sha at a ref, or null if it doesn't exist. */
+export async function getFile(
+  c: GhClient,
+  filePath: string,
+  ref: string
+): Promise<{ contents: string; sha: string } | null> {
+  try {
+    const res = await gh<{ content: string; encoding: string; sha: string }>(
+      c,
+      "GET",
+      `/repos/${c.repo}/contents/${encodePath(filePath)}?ref=${encodeURIComponent(ref)}`
+    );
+    const contents =
+      res.encoding === "base64"
+        ? Buffer.from(res.content, "base64").toString("utf8")
+        : res.content;
+    return { contents, sha: res.sha };
+  } catch (err) {
+    if (String(err).includes("→ 404")) return null;
+    throw err;
+  }
+}
+
+/** Create or update a file on a branch. */
+export async function putFile(
+  c: GhClient,
+  args: { filePath: string; contents: string; message: string; branch: string; sha?: string }
+): Promise<void> {
+  await gh(c, "PUT", `/repos/${c.repo}/contents/${encodePath(args.filePath)}`, {
+    message: args.message,
+    content: Buffer.from(args.contents, "utf8").toString("base64"),
+    branch: args.branch,
+    sha: args.sha,
+  });
+}
+
 export interface OpenedPr {
   number: number;
   url: string;
 }
 
+/** Open a pull request for an existing branch. */
+export async function createPr(
+  c: GhClient,
+  args: { title: string; head: string; base: string; body: string }
+): Promise<OpenedPr> {
+  const pr = await gh<{ number: number; html_url: string }>(c, "POST", `/repos/${c.repo}/pulls`, {
+    title: args.title,
+    head: args.head,
+    base: args.base,
+    body: args.body,
+  });
+  return { number: pr.number, url: pr.html_url };
+}
+
+/** Encode a repo file path for the contents API (keep slashes). */
+function encodePath(p: string): string {
+  return p.split("/").map(encodeURIComponent).join("/");
+}
+
 /**
- * Create `branch` off the repo's default branch, commit a single file, and open
- * a PR. Used to open a "requirements PR" carrying the approved BRD; the builder
- * will later replace the committed content with real code changes.
+ * Convenience used by the PR-agent fallback: create a branch off default,
+ * commit a single file, and open a PR. (When the builder has already committed
+ * real code, the PR agent opens the PR directly instead.)
  */
 export async function openPrWithFile(args: {
   token: string;
-  repo: string; // "owner/name"
+  repo: string;
   branch: string;
   filePath: string;
   fileContents: string;
@@ -53,55 +138,16 @@ export async function openPrWithFile(args: {
   prTitle: string;
   prBody: string;
 }): Promise<OpenedPr> {
-  const [owner, name] = args.repo.split("/");
-  if (!owner || !name) throw new Error(`Invalid repo "${args.repo}" (expected owner/name)`);
-  const opts: GhOpts = { token: args.token, repo: args.repo };
-
-  // 1. Resolve the default branch and its head commit sha.
-  const repoInfo = await gh<{ default_branch: string }>(opts, "GET", `/repos/${args.repo}`);
-  const base = repoInfo.default_branch;
-  const ref = await gh<{ object: { sha: string } }>(
-    opts,
-    "GET",
-    `/repos/${args.repo}/git/ref/heads/${encodeURIComponent(base)}`
-  );
-  const baseSha = ref.object.sha;
-
-  // 2. Create the feature branch (ignore "already exists").
-  try {
-    await gh(opts, "POST", `/repos/${args.repo}/git/refs`, {
-      ref: `refs/heads/${args.branch}`,
-      sha: baseSha,
-    });
-  } catch (err) {
-    if (!String(err).includes("Reference already exists")) throw err;
-  }
-
-  // 3. Commit the file onto the branch (create or update).
-  let existingSha: string | undefined;
-  try {
-    const existing = await gh<{ sha: string }>(
-      opts,
-      "GET",
-      `/repos/${args.repo}/contents/${encodeURIComponent(args.filePath)}?ref=${args.branch}`
-    );
-    existingSha = existing.sha;
-  } catch {
-    // file doesn't exist yet — fine
-  }
-  await gh(opts, "PUT", `/repos/${args.repo}/contents/${encodeURIComponent(args.filePath)}`, {
+  const c: GhClient = { token: args.token, repo: args.repo };
+  const { base, baseSha } = await getDefaultBranch(c);
+  await ensureBranch(c, args.branch, baseSha);
+  const existing = await getFile(c, args.filePath, args.branch);
+  await putFile(c, {
+    filePath: args.filePath,
+    contents: args.fileContents,
     message: args.commitMessage,
-    content: Buffer.from(args.fileContents, "utf8").toString("base64"),
     branch: args.branch,
-    sha: existingSha,
+    sha: existing?.sha,
   });
-
-  // 4. Open the pull request.
-  const pr = await gh<{ number: number; html_url: string }>(
-    opts,
-    "POST",
-    `/repos/${args.repo}/pulls`,
-    { title: args.prTitle, head: args.branch, base, body: args.prBody }
-  );
-  return { number: pr.number, url: pr.html_url };
+  return createPr(c, { title: args.prTitle, head: args.branch, base, body: args.prBody });
 }

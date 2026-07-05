@@ -1,4 +1,4 @@
-import { openPrWithFile } from "../github";
+import { createPr, getDefaultBranch, openPrWithFile, type GhClient } from "../github";
 import type { AgentContext, BrdResult, BuildResult, PrResult } from "./types";
 
 /**
@@ -22,17 +22,30 @@ export async function runPr(
   if (ctx.githubToken && ctx.repo) {
     await ctx.log(`Opening a real pull request against ${ctx.repo}.`);
     try {
-      const filePath = `docs/gauge/${ctx.request.id}.md`;
-      const opened = await openPrWithFile({
-        token: ctx.githubToken,
-        repo: ctx.repo,
-        branch: build.branch,
-        filePath,
-        fileContents: brdDoc(ctx, brd),
-        commitMessage: `Gauge requirements: ${ctx.request.title}`,
-        prTitle: title,
-        prBody: prBody(ctx, brd),
-      });
+      let opened;
+      if (build.committed) {
+        // The builder already committed real code to the branch — just open it.
+        const client: GhClient = { token: ctx.githubToken, repo: ctx.repo };
+        const { base } = await getDefaultBranch(client);
+        opened = await createPr(client, {
+          title,
+          head: build.branch,
+          base,
+          body: prBody(ctx, brd, build),
+        });
+      } else {
+        // No real code yet — open a requirements PR carrying the approved BRD.
+        opened = await openPrWithFile({
+          token: ctx.githubToken,
+          repo: ctx.repo,
+          branch: build.branch,
+          filePath: `docs/gauge/${ctx.request.id}.md`,
+          fileContents: brdDoc(ctx, brd),
+          commitMessage: `Gauge requirements: ${ctx.request.title}`,
+          prTitle: title,
+          prBody: prBody(ctx, brd, build),
+        });
+      }
       await ctx.log(`Opened PR #${opened.number}.`, { url: opened.url });
       return { number: opened.number, url: opened.url, title };
     } catch (err) {
@@ -76,7 +89,11 @@ Request type: ${ctx.request.type} · BRD by: ${brd.model}
 `;
 }
 
-function prBody(ctx: AgentContext, brd: BrdResult): string {
+function prBody(ctx: AgentContext, brd: BrdResult, build: BuildResult): string {
+  const footer = build.committed
+    ? `### Changes\n${build.filesChanged.map((f) => `- \`${f}\``).join("\n")}\n\n${build.summary}\n\n> Auto-implemented by Gauge's builder agent from the approved requirements. Review before merging.`
+    : `> This PR carries the approved requirements. Connect a repo + API key so the builder agent can implement them as real code.`;
+
   return `Opened by **Gauge** from an approved stakeholder request.
 
 **Request:** ${ctx.request.title}
@@ -86,6 +103,5 @@ ${brd.narrative}
 ### Acceptance criteria
 ${brd.acceptanceCriteria.map((c) => `- [ ] ${c}`).join("\n")}
 
-> This PR currently carries the approved requirements. Replace with the real
-> implementation once the builder agent is wired in.`;
+${footer}`;
 }
