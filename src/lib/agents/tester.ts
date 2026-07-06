@@ -1,56 +1,90 @@
 import { completeJson, getAnthropic } from "../anthropic";
 import { features } from "../env";
 import { getFile, type GhClient } from "../github";
+import { canDriveBrowser } from "./browserAgent";
+import { acceptanceTest, bugFixReview, regressionSweep } from "./verification";
 import type { AgentContext, BrdResult, BuildResult, TestResult } from "./types";
 
 /**
- * Tester agent.
+ * Tester agent — verifies the change after the build. Preference order:
  *
- * When the builder committed real code and an API key is set, this runs an
- * automated ACCEPTANCE REVIEW: it fetches the committed files from the branch
- * and asks Claude to judge each approved acceptance criterion against the
- * actual changes, pass/fail with a reason. (Executing a repo's own unit suite
- * would require its CI; this checks the business/UX acceptance criteria, which
- * is what the BRD produced.)
- *
- * Falls back to a stub pass when there's nothing real to review.
+ *  1. Browser verification (when an app URL is set): performs the acceptance
+ *     criteria as real human actions, re-checks that a reported bug is fixed,
+ *     and runs a regression sweep — all driving real Chromium.
+ *  2. Code acceptance review (when code was committed but no app URL): asks
+ *     Claude to judge the criteria against the committed diff.
+ *  3. Stub pass (nothing to verify against).
  */
-
-const SYSTEM = `You are a strict but fair QA reviewer. You are given a set of acceptance
-criteria and the current contents of the files that were changed to satisfy
-them. Judge whether each criterion is met by the changes.
-
-Reply with a single JSON object only, matching exactly this shape:
-{
-  "summary": string,
-  "passed": boolean,                                  // true only if every criterion is met
-  "results": [ { "criterion": string, "passed": boolean, "note": string } ]
-}`;
-
 export async function runTester(
   ctx: AgentContext,
   build: BuildResult,
   brd: BrdResult
 ): Promise<TestResult> {
-  const canReview = Boolean(
-    ctx.githubToken && ctx.repo && build.committed && features.anthropic && getAnthropic()
-  );
+  const url = ctx.appBaseUrl ?? null;
 
-  if (canReview) {
+  // 1. Real browser verification against the running app.
+  if (url && canDriveBrowser()) {
     try {
-      return await acceptanceReview(ctx, build, brd);
+      return await browserVerification(ctx, brd, url);
     } catch (err) {
-      await ctx.log(`Acceptance review failed (${(err as Error).message}); using stub result.`);
+      await ctx.log(`Browser verification failed (${(err as Error).message}); trying code review.`);
     }
-  } else {
-    await ctx.log(
-      "Tester running as a stub — needs committed code + ANTHROPIC_API_KEY for a real acceptance review."
-    );
+  } else if (!url) {
+    await ctx.log("No app URL set — browser verification skipped. Set it in Settings.");
   }
+
+  // 2. Code acceptance review against the committed diff.
+  if (ctx.githubToken && ctx.repo && build.committed && features.anthropic && getAnthropic()) {
+    try {
+      return await codeAcceptanceReview(ctx, build, brd);
+    } catch (err) {
+      await ctx.log(`Code acceptance review failed (${(err as Error).message}); using stub.`);
+    }
+  }
+
+  // 3. Stub.
+  await ctx.log("Tester running as a stub — set an app URL or connect a repo for real checks.");
   return stubResult();
 }
 
-async function acceptanceReview(
+async function browserVerification(
+  ctx: AgentContext,
+  brd: BrdResult,
+  url: string
+): Promise<TestResult> {
+  await ctx.log(`Verifying against the running app at ${url}.`);
+
+  const acceptance = await acceptanceTest(ctx, brd, url);
+  await ctx.log(`${acceptance.label}: ${acceptance.passed ? "passed" : "failed"}.`, acceptance.lines);
+
+  const isBug = ctx.request.type === "BUG";
+  const bugFix = isBug ? await bugFixReview(ctx, url) : null;
+  if (bugFix) await ctx.log(`${bugFix.label}: ${bugFix.passed ? "passed" : "failed"}.`, bugFix.lines);
+
+  const regression = await regressionSweep(ctx, brd, url);
+  await ctx.log(`${regression.label}: ${regression.passed ? "passed" : "failed"}.`, regression.lines);
+
+  const reports = [acceptance, ...(bugFix ? [bugFix] : []), regression];
+  const passed = reports.every((r) => r.passed);
+  const output = reports.flatMap((r) => [`— ${r.label} —`, ...r.lines]);
+  const summary = passed
+    ? `All browser checks passed (${reports.map((r) => r.label.toLowerCase()).join(", ")}).`
+    : `Verification found issues in: ${reports
+        .filter((r) => !r.passed)
+        .map((r) => r.label)
+        .join(", ")}.`;
+
+  return { passed, summary, output };
+}
+
+// --- Fallback: LLM review of the committed code against the criteria ---
+
+const REVIEW_SYSTEM = `You are a strict but fair QA reviewer. Given acceptance criteria and the
+current contents of the changed files, judge whether each criterion is met.
+Reply with a single JSON object only:
+{ "summary": string, "passed": boolean, "results": [ { "criterion": string, "passed": boolean, "note": string } ] }`;
+
+async function codeAcceptanceReview(
   ctx: AgentContext,
   build: BuildResult,
   brd: BrdResult
@@ -64,15 +98,16 @@ async function acceptanceReview(
     if (file) files.push({ path, contents: file.contents });
   }
 
-  const userPrompt = `Acceptance criteria:
-${brd.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+  const json = await completeJson({
+    system: REVIEW_SYSTEM,
+    user: `Acceptance criteria:\n${brd.acceptanceCriteria
+      .map((c, i) => `${i + 1}. ${c}`)
+      .join("\n")}\n\nChanged files:\n${files
+      .map((f) => `\n=== ${f.path} ===\n${f.contents}`)
+      .join("\n")}\n\nJudge each criterion and return JSON.`,
+    maxTokens: 2000,
+  });
 
-Changed files:
-${files.map((f) => `\n=== ${f.path} ===\n${f.contents}`).join("\n")}
-
-Judge each criterion against the changes and return the JSON.`;
-
-  const json = await completeJson({ system: SYSTEM, user: userPrompt, maxTokens: 2000 });
   const results = Array.isArray(json.results)
     ? (json.results as unknown[]).map((r) => {
         const o = r as { criterion?: unknown; passed?: unknown; note?: unknown };
@@ -86,17 +121,12 @@ Judge each criterion against the changes and return the JSON.`;
   if (results.length === 0) throw new Error("Reviewer returned no results");
 
   const passed = typeof json.passed === "boolean" ? json.passed : results.every((r) => r.passed);
-  const output = results.map(
+  const output = ["— Acceptance (code review) —", ...results.map(
     (r) => `${r.passed ? "PASS" : "FAIL"}  ${r.criterion}${r.note ? ` — ${r.note}` : ""}`
-  );
+  )];
   const summary =
     String(json.summary ?? "").trim() ||
     `${results.filter((r) => r.passed).length}/${results.length} acceptance criteria met.`;
-
-  await ctx.log(passed ? "Acceptance review passed." : "Acceptance review found gaps.", {
-    passed,
-    criteria: results.length,
-  });
   return { passed, summary, output };
 }
 
