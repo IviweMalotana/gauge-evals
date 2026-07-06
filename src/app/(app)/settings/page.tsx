@@ -134,8 +134,11 @@ export default async function SettingsPage({
           The BRD and planner agents use Claude; the UX-check agent drives a{" "}
           <strong>real headless browser</strong> to reproduce bugs; and when a
           repo is connected the builder agent <strong>writes real code</strong>,
-          the tester runs an <strong>automated acceptance review</strong> of the
-          changes, and the PR agent opens a <strong>real pull request</strong>.
+          and — when an app URL is set — the tester{" "}
+          <strong>drives a real browser</strong> to perform the acceptance
+          criteria as human actions, verifies a reported bug is fixed, and runs a
+          regression sweep. The PR agent opens a{" "}
+          <strong>real pull request</strong>.
         </p>
       </div>
     </div>
