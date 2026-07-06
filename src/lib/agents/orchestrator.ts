@@ -8,6 +8,7 @@ import { runBrd } from "./brd";
 import { runPlanner } from "./planner";
 import { runBuilder } from "./builder";
 import { runAcceptance, runBugFix, runRegression } from "./tester";
+import { resolveTestTarget } from "./preview";
 import { runPr } from "./pr";
 import type { VerificationResult } from "./types";
 
@@ -25,12 +26,18 @@ import type { VerificationResult } from "./types";
 async function buildContext(request: Request): Promise<AgentContext> {
   const company = await db.company.findUnique({
     where: { id: request.companyId },
-    select: { githubDefaultRepo: true, appBaseUrl: true, githubAccessToken: true },
+    select: {
+      githubDefaultRepo: true,
+      appBaseUrl: true,
+      previewUrlTemplate: true,
+      githubAccessToken: true,
+    },
   });
   return {
     request,
     repo: company?.githubDefaultRepo ?? null,
     appBaseUrl: company?.appBaseUrl ?? null,
+    previewUrlTemplate: company?.previewUrlTemplate ?? null,
     githubToken: decryptSecret(company?.githubAccessToken),
     log: (message, data) =>
       logEvent(request.id, statusToStage(request.status), message, data),
@@ -172,17 +179,25 @@ export async function runAfterApproval(requestId: string): Promise<void> {
 
     // --- Verification: acceptance → bug-fix review → regression ---
     // Each is its own stage. Any failing check stops before the PR.
+    // Resolve the URL to test against once — a per-branch preview if the company
+    // configured one (so we test the actual change), else the app URL.
+    const target = await resolveTestTarget(ctx, build.branch, (m) =>
+      logEvent(requestId, "verify", m)
+    );
+    if (target.source !== "none") {
+      await logEvent(requestId, "verify", `Verifying against ${target.source}: ${target.url}`);
+    }
 
     request = await setStatus(requestId, "TESTING");
     ctx = await buildContext(request);
     await logEvent(requestId, "acceptance", "Acceptance testing started.");
-    const acceptance = await runAcceptance(ctx, build, brd);
+    const acceptance = await runAcceptance(ctx, build, brd, target.url);
     await persistCheck(requestId, acceptance);
     if (!acceptance.passed) return stopFailed(requestId, "acceptance", acceptance.summary);
 
     request = await setStatus(requestId, "BUGFIX_REVIEW");
     ctx = await buildContext(request);
-    const bugfix = await runBugFix(ctx);
+    const bugfix = await runBugFix(ctx, target.url);
     if (bugfix) {
       await persistCheck(requestId, bugfix);
       if (!bugfix.passed) return stopFailed(requestId, "bugfix", bugfix.summary);
@@ -190,7 +205,7 @@ export async function runAfterApproval(requestId: string): Promise<void> {
 
     request = await setStatus(requestId, "REGRESSION");
     ctx = await buildContext(request);
-    const regression = await runRegression(ctx, brd);
+    const regression = await runRegression(ctx, brd, target.url);
     if (regression) {
       await persistCheck(requestId, regression);
       if (!regression.passed) return stopFailed(requestId, "regression", regression.summary);

@@ -34,6 +34,7 @@ model Company {
   githubAccessToken  String? // encrypted-at-rest in production; stored plainly in dev
   githubDefaultRepo  String? // e.g. "acme/webapp"
   appBaseUrl         String? // where the company's app runs; UX-check drives it
+  previewUrlTemplate String? // per-branch preview URL, e.g. "https://app-{branch}.up.railway.app"
 
   members  Membership[]
   requests Request[]

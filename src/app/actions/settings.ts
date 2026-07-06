@@ -29,6 +29,19 @@ export async function setAppUrl(formData: FormData): Promise<void> {
   revalidatePath("/settings");
 }
 
+export async function setPreviewTemplate(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  if (!can.manageCompany(user.role)) return;
+  const raw = String(formData.get("previewUrlTemplate") ?? "").trim();
+  // Require an http(s) template that includes the {branch} placeholder.
+  const valid = /^https?:\/\/\S*\{branch\}\S*$/i.test(raw) ? raw : null;
+  await db.company.update({
+    where: { id: user.companyId },
+    data: { previewUrlTemplate: valid },
+  });
+  revalidatePath("/settings");
+}
+
 export async function disconnectGithub(): Promise<void> {
   const user = await requireUser();
   if (!can.manageCompany(user.role)) return;
