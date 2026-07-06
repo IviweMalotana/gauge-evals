@@ -7,6 +7,7 @@ import {
   putFile,
   type GhClient,
 } from "../github";
+import { APP_NAME, BRANCH_PREFIX } from "../brand";
 import type { AgentContext, BrdResult, BuildResult, PlanResult } from "./types";
 
 /**
@@ -46,7 +47,7 @@ export async function runBuilder(
   plan: PlanResult,
   brd: BrdResult
 ): Promise<BuildResult> {
-  const branch = `gauge/${ctx.request.id.slice(0, 8)}`;
+  const branch = `${BRANCH_PREFIX}/${ctx.request.id.slice(0, 8)}`;
 
   const canBuildForReal = Boolean(ctx.githubToken && ctx.repo && features.anthropic && getAnthropic());
   if (canBuildForReal) {
@@ -124,7 +125,7 @@ Return the file changes as JSON.`;
     await putFile(client, {
       filePath: f.path,
       contents: f.contents,
-      message: `Gauge build: ${ctx.request.title} (${f.path})`,
+      message: `${APP_NAME} build: ${ctx.request.title} (${f.path})`,
       branch,
       sha: existing?.sha,
     });

@@ -1,4 +1,4 @@
-# Deploy Gauge to Railway with Claude for Chrome
+# Deploy Baton to Railway with Claude for Chrome
 
 Paste the prompt below into **Claude for Chrome** (the browser-driving agent),
 after filling in the `FILL THESE IN` block. The agent will drive Railway for
@@ -11,7 +11,7 @@ Everything the agent needs is also in [`DEPLOY.md`](../DEPLOY.md).
 
 ## The prompt
 
-> You are operating my browser to deploy a Next.js app called **Gauge** to
+> You are operating my browser to deploy a Next.js app called **Baton** to
 > **Railway**. Work carefully, confirm before anything destructive, and if you
 > get stuck or a screen doesn't match these steps, stop and tell me what you see
 > rather than guessing. Treat every value in the "FILL THESE IN" block as a
@@ -71,14 +71,14 @@ Everything the agent needs is also in [`DEPLOY.md`](../DEPLOY.md).
 >    - `APP_URL` = the generated `https://…` URL (no trailing slash)
 >    Redeploy so `APP_URL` takes effect.
 >
-> 8. Verify: open the `APP_URL` in a new tab. You should see the Gauge landing
+> 8. Verify: open the `APP_URL` in a new tab. You should see the Baton landing
 >    page. Click **Get started / Create your company**, register a test company,
 >    and confirm you land on the dashboard. Report the final URL to me.
 >
 > 9. (Optional — GitHub OAuth) Only if I gave you a `GITHUB_CLIENT_ID`: go to
 >    https://github.com/settings/developers → the OAuth App → set the
 >    **Authorization callback URL** to `<APP_URL>/api/oauth/github/callback`
->    (exactly matching APP_URL). Save. Then in Gauge → Settings, click
+>    (exactly matching APP_URL). Save. Then in Baton → Settings, click
 >    **Connect GitHub** and confirm it round-trips back connected.
 >
 > When done, give me: the live URL, whether the deploy logs were clean, and

@@ -1,6 +1,6 @@
-# Gauge
+# Baton
 
-From stakeholder request to pull request.
+From stakeholder request to QA-verified pull request — the **BA-to-QA pipeline**.
 
 A company registers, invites collaborators and assigns them roles, and connects
 GitHub via OAuth. Stakeholders file requests. Each request runs through an
@@ -21,13 +21,19 @@ UX check → BRD (Given/When/Then) → [human approval] → Plan → Build → T
 - **Plan → Build → Test → PR** — planner, builder, and tester agents take the
   approved BRD the rest of the way to an open pull request.
 
-> **Status of this build.** Auth, companies, roles, GitHub OAuth, request
-> intake, the full pipeline state machine, the human-approval gate, and the
-> audit log are implemented. The **BRD agent makes real Anthropic calls.** The
-> UX-check (Playwright), planner, builder, tester, and PR-creation stages are
-> **structured stubs behind real interfaces** — each returns realistic data and
-> is designed to be swapped for a real implementation without touching the
-> orchestrator. See the `TODO(...)` markers in `src/lib/agents/*`.
+> **Status.** All stages are real, each degrading gracefully when a dependency
+> isn't configured:
+> - **UX check** drives real headless Chromium to reproduce bugs.
+> - **BRD** and **planner** use the Anthropic API (Claude Sonnet).
+> - **Builder** reads the repo and commits real code to a branch.
+> - **QA** runs three browser-driven checks — **acceptance** (performs the
+>   criteria as human actions), **bug-fix review**, and **regression** — against
+>   a per-branch preview URL when configured.
+> - **PR** opens a real pull request via the stored GitHub token.
+>
+> Without an API key / connected repo / app URL, each falls back (template BRD,
+> code review instead of browser tests, compare-URL instead of a PR) so the
+> whole pipeline still runs end-to-end.
 
 ## Stack
 
@@ -98,8 +104,8 @@ prisma/
 
 The pipeline is orchestrated in `src/lib/agents/orchestrator.ts`, split into
 `runToApproval` (phase 1, up to the human gate) and `runAfterApproval`
-(phase 2, build through PR). Both run inline today; moving them to a background
-queue is the natural next step for production.
+(phase 2, build through QA + PR). Both run on a background worker
+(`src/lib/queue.ts`) so filing a request returns immediately.
 
 ## Roles
 
@@ -110,11 +116,10 @@ queue is the natural next step for production.
 | Collaborator | File and run requests                                        |
 | Stakeholder  | File requests and approve/reject                            |
 
-## Roadmap (swap the stubs)
+## Roadmap
 
-- Real Playwright/MCP bug reproduction in `agents/uxCheck.ts`
-- Code-aware planner and a real code-writing builder (worktree/sub-agent)
-- Real test runner (unit + Gherkin scenarios via Playwright) in `agents/tester.ts`
-- Real PR creation in `agents/pr.ts` using the stored company token
-- Background job queue for the pipeline instead of inline execution
-- Encrypt `githubAccessToken` at rest
+- Provision Chromium on the production host so the browser-driven checks run in
+  deployment (not just locally)
+- Wire the per-branch preview URL to the host's PR-environment pattern
+- A real broker if running multiple instances (single instance is handled)
+- An automated test suite for Baton itself

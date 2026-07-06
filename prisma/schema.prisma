@@ -1,4 +1,4 @@
-// Gauge Evals — data model
+// Baton — data model (BA-to-QA pipeline)
 //
 // A Company registers with an owner. Owners/admins invite collaborators and
 // assign roles. Stakeholders file Requests. Each Request runs through a

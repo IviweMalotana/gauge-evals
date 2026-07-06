@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { APP_NAME } from "@/lib/brand";
 
 export default async function Home() {
   const user = await getCurrentUser();
@@ -19,7 +20,7 @@ export default async function Home() {
   return (
     <div>
       <div className="topbar">
-        <span className="brand">⟡ Gauge</span>
+        <span className="brand">⟡ {APP_NAME}</span>
         <nav className="row">
           <Link href="/login">Sign in</Link>
           <Link href="/register" className="btn" style={{ marginLeft: 16 }}>
@@ -29,13 +30,14 @@ export default async function Home() {
       </div>
       <div className="container">
         <div className="hero">
-          <h1>From stakeholder request to pull request.</h1>
+          <h1>From stakeholder request to QA-verified pull request.</h1>
           <p>
-            Stakeholders file a request. An agent runs a UX check — reproducing bugs
-            by driving the app, or scoping features against the code — then drafts a
-            business-facing BRD in plain Given/When/Then. A human approves, and the
-            planner, builder, and tester agents take it the rest of the way to an
-            open PR.
+            The BA-to-QA pipeline. Stakeholders file a request; an agent runs a UX
+            check — reproducing bugs by driving the app, or scoping features
+            against the code — then drafts a business-facing BRD in plain
+            Given/When/Then. A human approves, then the planner and builder
+            implement it and QA agents verify it in a real browser before opening
+            the PR.
           </p>
           <div className="row" style={{ marginTop: 24 }}>
             <Link href="/register" className="btn">
