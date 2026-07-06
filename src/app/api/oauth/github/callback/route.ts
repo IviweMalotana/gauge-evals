@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { env, features } from "@/lib/env";
 import { getCurrentUser, can } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { encryptSecret } from "@/lib/crypto";
 
 /**
  * GitHub OAuth callback: verify state, exchange the code for an access token,
@@ -59,7 +60,7 @@ export async function GET(req: NextRequest) {
       data: {
         githubConnected: true,
         githubLogin: me.login ?? null,
-        githubAccessToken: tokenJson.access_token, // encrypt at rest in production
+        githubAccessToken: encryptSecret(tokenJson.access_token), // encrypted at rest
       },
     });
 
