@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
+    // Run instrumentation.ts on server boot (starts the job worker).
+    instrumentationHook: true,
     // Keep the heavy browser driver out of the bundler; load it at runtime.
     serverComponentsExternalPackages: ["playwright-core"],
     serverActions: {

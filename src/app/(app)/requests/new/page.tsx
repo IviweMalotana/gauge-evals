@@ -7,7 +7,7 @@ function SubmitButton() {
   const { pending } = useFormStatus();
   return (
     <button className="btn" type="submit" disabled={pending} style={{ marginTop: 16 }}>
-      {pending ? "Running UX check & drafting BRD…" : "File request"}
+      {pending ? "Filing…" : "File request"}
     </button>
   );
 }
@@ -55,8 +55,8 @@ export default function NewRequestPage() {
         </form>
       </div>
       <p className="small muted">
-        Filing runs the UX check and BRD draft inline, so this can take a few
-        seconds.
+        Filing kicks off the pipeline in the background — you'll land on the
+        request page and watch the UX check and BRD draft appear as they run.
       </p>
     </div>
   );

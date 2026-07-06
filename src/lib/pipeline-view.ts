@@ -40,6 +40,19 @@ export function stepState(
   return "todo";
 }
 
+/** True while the background worker is actively moving the request forward. */
+export function isActive(status: string): boolean {
+  return [
+    "INTAKE",
+    "UX_CHECK",
+    "BRD_DRAFTING",
+    "PLANNING",
+    "BUILDING",
+    "TESTING",
+    "PR_CREATED",
+  ].includes(status);
+}
+
 export function statusLabel(status: string): string {
   const map: Record<string, string> = {
     INTAKE: "Intake",
