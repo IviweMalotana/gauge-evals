@@ -14,6 +14,8 @@ export interface AgentContext {
   repo?: string | null;
   /** Base URL of the company's running app, for the UX-check browser pass. */
   appBaseUrl?: string | null;
+  /** Per-branch preview URL template, e.g. "https://app-{branch}.up.railway.app". */
+  previewUrlTemplate?: string | null;
   /** Company's stored GitHub OAuth token, for the PR agent. */
   githubToken?: string | null;
   log: (message: string, data?: unknown) => Promise<void>;

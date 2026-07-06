@@ -14,20 +14,22 @@ import type { AgentContext, BrdResult, BuildResult, VerificationResult } from ".
  *  - runBugFix     — only for bug requests when a browser target is available.
  *  - runRegression — only when a browser target is available.
  *
- * A browser target means the company's app URL is set and we can plan steps
- * (API key present).
+ * `target` is the resolved URL to test against (a per-branch preview when
+ * available, else the app URL, else null). The browser path additionally needs
+ * an API key to plan steps.
  */
 
-export function browserTargetUrl(ctx: AgentContext): string | null {
-  return ctx.appBaseUrl && canDriveBrowser() ? ctx.appBaseUrl : null;
+function browserTarget(target: string | null): string | null {
+  return target && canDriveBrowser() ? target : null;
 }
 
 export async function runAcceptance(
   ctx: AgentContext,
   build: BuildResult,
-  brd: BrdResult
+  brd: BrdResult,
+  target: string | null
 ): Promise<VerificationResult> {
-  const url = browserTargetUrl(ctx);
+  const url = browserTarget(target);
 
   if (url) {
     try {
@@ -57,8 +59,11 @@ export async function runAcceptance(
   };
 }
 
-export async function runBugFix(ctx: AgentContext): Promise<VerificationResult | null> {
-  const url = browserTargetUrl(ctx);
+export async function runBugFix(
+  ctx: AgentContext,
+  target: string | null
+): Promise<VerificationResult | null> {
+  const url = browserTarget(target);
   if (!url || ctx.request.type !== "BUG") return null;
   await ctx.log(`Bug-fix review: re-checking the reported failure at ${url}.`);
   return fromReport("bugfix", await bugFixReview(ctx, url));
@@ -66,9 +71,10 @@ export async function runBugFix(ctx: AgentContext): Promise<VerificationResult |
 
 export async function runRegression(
   ctx: AgentContext,
-  brd: BrdResult
+  brd: BrdResult,
+  target: string | null
 ): Promise<VerificationResult | null> {
-  const url = browserTargetUrl(ctx);
+  const url = browserTarget(target);
   if (!url) return null;
   await ctx.log(`Regression sweep against ${url}.`);
   return fromReport("regression", await regressionSweep(ctx, brd, url));

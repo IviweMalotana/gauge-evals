@@ -2,7 +2,12 @@ import { requireUser } from "@/lib/guards";
 import { db } from "@/lib/db";
 import { can } from "@/lib/auth";
 import { features } from "@/lib/env";
-import { disconnectGithub, setAppUrl, setDefaultRepo } from "@/app/actions/settings";
+import {
+  disconnectGithub,
+  setAppUrl,
+  setDefaultRepo,
+  setPreviewTemplate,
+} from "@/app/actions/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -120,6 +125,40 @@ export default async function SettingsPage({
               <span className="mono">{company.appBaseUrl}</span>
             ) : (
               "Not set. Ask an owner or admin to add it."
+            )}
+          </p>
+        )}
+
+        <h4 style={{ marginBottom: 4 }}>Per-branch preview URL (optional)</h4>
+        <p className="small muted" style={{ marginTop: 0 }}>
+          If your host deploys a preview per branch, add its URL template with a{" "}
+          <span className="mono">{"{branch}"}</span> placeholder. The tester will
+          wait for that preview to come live and verify the{" "}
+          <strong>actual change</strong> — bug-fix and regression become real
+          verdicts. Without it, tests run against the app URL above.
+          <br />
+          Examples: <span className="mono">https://app-{"{branch}"}.up.railway.app</span>{" "}
+          · <span className="mono">https://{"{repoName}"}-git-{"{branch}"}.vercel.app</span>
+        </p>
+        {manage ? (
+          <form action={setPreviewTemplate} className="row">
+            <input
+              name="previewUrlTemplate"
+              placeholder="https://app-{branch}.up.railway.app"
+              defaultValue={company?.previewUrlTemplate ?? ""}
+              style={{ maxWidth: 420 }}
+              className="mono"
+            />
+            <button className="btn secondary" type="submit">
+              Save preview template
+            </button>
+          </form>
+        ) : (
+          <p className="small muted">
+            {company?.previewUrlTemplate ? (
+              <span className="mono">{company.previewUrlTemplate}</span>
+            ) : (
+              "Not set."
             )}
           </p>
         )}
