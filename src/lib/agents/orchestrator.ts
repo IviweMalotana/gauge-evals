@@ -172,7 +172,7 @@ export async function runAfterApproval(requestId: string): Promise<void> {
     request = await setStatus(requestId, "TESTING");
     ctx = await buildContext(request);
     await logEvent(requestId, "tester", "Tester agent started.");
-    const test = await runTester(ctx, build);
+    const test = await runTester(ctx, build, brd);
     await db.testRun.upsert({
       where: { requestId },
       create: {

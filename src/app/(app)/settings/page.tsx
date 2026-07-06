@@ -133,9 +133,9 @@ export default async function SettingsPage({
           <strong>{features.anthropic ? "enabled" : "using the template fallback"}</strong>.
           The BRD and planner agents use Claude; the UX-check agent drives a{" "}
           <strong>real headless browser</strong> to reproduce bugs; and when a
-          repo is connected the builder agent <strong>writes real code</strong>{" "}
-          and the PR agent opens a <strong>real pull request</strong>. The tester
-          runs as a structured stub in this build.
+          repo is connected the builder agent <strong>writes real code</strong>,
+          the tester runs an <strong>automated acceptance review</strong> of the
+          changes, and the PR agent opens a <strong>real pull request</strong>.
         </p>
       </div>
     </div>
