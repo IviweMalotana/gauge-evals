@@ -132,9 +132,10 @@ export default async function SettingsPage({
           <span className="mono">ANTHROPIC_API_KEY</span> is set — currently{" "}
           <strong>{features.anthropic ? "enabled" : "using the template fallback"}</strong>.
           The BRD and planner agents use Claude; the UX-check agent drives a{" "}
-          <strong>real headless browser</strong> to reproduce bugs; and the PR
-          agent opens a <strong>real pull request</strong> when GitHub is
-          connected. Builder and tester run as structured stubs in this build.
+          <strong>real headless browser</strong> to reproduce bugs; and when a
+          repo is connected the builder agent <strong>writes real code</strong>,
+          the tester runs an <strong>automated acceptance review</strong> of the
+          changes, and the PR agent opens a <strong>real pull request</strong>.
         </p>
       </div>
     </div>

@@ -44,6 +44,10 @@ export interface BuildResult {
   branch: string;
   summary: string;
   diff: string;
+  /** True when real code changes were committed to the branch on GitHub. */
+  committed: boolean;
+  /** Paths the builder changed/created (empty in the stub path). */
+  filesChanged: string[];
 }
 
 export interface TestResult {
