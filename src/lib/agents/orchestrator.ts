@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { decryptSecret } from "../crypto";
 import type { Request } from "@prisma/client";
 import type { RequestStatus } from "../domain";
 import type { AgentContext } from "./types";
@@ -29,7 +30,7 @@ async function buildContext(request: Request): Promise<AgentContext> {
     request,
     repo: company?.githubDefaultRepo ?? null,
     appBaseUrl: company?.appBaseUrl ?? null,
-    githubToken: company?.githubAccessToken ?? null,
+    githubToken: decryptSecret(company?.githubAccessToken),
     log: (message, data) =>
       logEvent(request.id, statusToStage(request.status), message, data),
   };

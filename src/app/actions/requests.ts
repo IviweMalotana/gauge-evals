@@ -6,11 +6,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/guards";
 import { can } from "@/lib/auth";
-import {
-  logEvent,
-  runAfterApproval,
-  runToApproval,
-} from "@/lib/agents/orchestrator";
+import { logEvent } from "@/lib/agents/orchestrator";
+import { enqueue } from "@/lib/queue";
 
 const createSchema = z.object({
   title: z.string().min(4, "Give the request a clear title"),
@@ -50,8 +47,8 @@ export async function createRequest(
   });
   await logEvent(request.id, "intake", `Request filed by ${user.name ?? user.email}.`);
 
-  // Phase 1: UX check + BRD, then pause at AWAITING_APPROVAL.
-  await runToApproval(request.id);
+  // Phase 1 (UX check + BRD) runs in the background; return immediately.
+  await enqueue("to_approval", request.id);
 
   redirect(`/requests/${request.id}`);
 }
@@ -108,8 +105,9 @@ export async function decideBrd(formData: FormData): Promise<void> {
     redirect(`/requests/${requestId}`);
   }
 
-  // Accepted or altered → run phase 2 (plan → build → test → PR).
-  await runAfterApproval(requestId);
+  // Accepted or altered → run phase 2 (plan → build → test → PR) in the
+  // background.
+  await enqueue("after_approval", requestId);
   revalidatePath(`/requests/${requestId}`);
   redirect(`/requests/${requestId}`);
 }
@@ -125,7 +123,7 @@ export async function retryRequest(formData: FormData): Promise<void> {
   if (!request) redirect("/requests");
 
   await logEvent(requestId, "pipeline", "Pipeline restarted from intake.");
-  await runToApproval(requestId);
+  await enqueue("to_approval", requestId);
   revalidatePath(`/requests/${requestId}`);
   redirect(`/requests/${requestId}`);
 }

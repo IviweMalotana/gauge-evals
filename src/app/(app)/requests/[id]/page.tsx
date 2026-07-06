@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/guards";
 import { db } from "@/lib/db";
-import { PIPELINE_STEPS, statusLabel, stepState } from "@/lib/pipeline-view";
+import { PIPELINE_STEPS, isActive, statusLabel, stepState } from "@/lib/pipeline-view";
 import { BrdApproval } from "@/components/BrdApproval";
+import { AutoRefresh } from "@/components/AutoRefresh";
 import { retryRequest } from "@/app/actions/requests";
 
 export const dynamic = "force-dynamic";
@@ -64,8 +65,17 @@ export default async function RequestDetail({
         {request.priority} priority
       </p>
 
+      {/* Live-refresh while the background worker advances the pipeline */}
+      {isActive(request.status) && <AutoRefresh />}
+
       {/* Pipeline progress */}
       <div className="card">
+        {isActive(request.status) && (
+          <div className="notice" style={{ borderLeftColor: "var(--accent)", marginBottom: 12 }}>
+            Working… the pipeline is running in the background. This page updates
+            automatically.
+          </div>
+        )}
         <div className="pipeline">
           {PIPELINE_STEPS.map((s) => {
             const st =

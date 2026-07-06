@@ -186,6 +186,22 @@ model PullRequestRef {
   createdAt DateTime @default(now())
 }
 
+// Background work queue. Filing a request (or approving a BRD) enqueues a Job;
+// an in-process worker runs the pipeline off the request path. Durable, so
+// queued work survives a restart.
+model Job {
+  id        String   @id @default(cuid())
+  requestId String
+  kind      String // "to_approval" | "after_approval"
+  status    String   @default("queued") // queued | running | done | error
+  attempts  Int      @default(0)
+  error     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
 // Append-only audit trail of everything the pipeline does.
 model PipelineEvent {
   id        String   @id @default(cuid())
