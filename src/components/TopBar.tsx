@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { logout } from "@/app/actions/auth";
+import { APP_NAME } from "@/lib/brand";
 
 export function TopBar({
   companyName,
@@ -12,7 +13,7 @@ export function TopBar({
     <div className="topbar">
       <div className="row">
         <Link href="/dashboard" className="brand">
-          ⟡ Gauge
+          ⟡ {APP_NAME}
         </Link>
         <span className="muted small" style={{ marginLeft: 12 }}>
           {companyName} · <span className="badge role">{role}</span>

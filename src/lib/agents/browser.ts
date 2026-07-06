@@ -61,7 +61,7 @@ export async function reproduceInBrowser(
     const context = await browser.newContext({
       viewport: { width: 390, height: 844 }, // mobile-ish, matches many reports
       userAgent:
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 Gauge-UXCheck",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 Baton-UXCheck",
     });
     const page = await context.newPage();
     page.on("console", (m) => {

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# SessionStart hook for Gauge (Claude Code on the web).
+# SessionStart hook for Baton (Claude Code on the web).
 #
 # Installs dependencies and prepares the local dev environment so tests, the
 # typechecker, and the dev server work immediately. Runs synchronously.
@@ -69,4 +69,4 @@ npx prisma db push --skip-generate
 echo "Seeding demo data..."
 npx tsx prisma/seed.ts || echo "Seed skipped (already applied)."
 
-echo "Gauge dev environment ready."
+echo "Baton dev environment ready."

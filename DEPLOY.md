@@ -1,6 +1,6 @@
-# Deploying Gauge
+# Deploying Baton
 
-Gauge is a standard Next.js app. It runs anywhere that can run Node 20 and reach
+Baton is a standard Next.js app. It runs anywhere that can run Node 20 and reach
 a PostgreSQL database. These notes cover Railway specifically plus the general
 contract.
 

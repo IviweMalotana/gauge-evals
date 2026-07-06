@@ -1,11 +1,11 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "Gauge — stakeholder request pipeline",
-  description:
-    "Companies file stakeholder requests; agents run a UX check, draft a BRD, and — after human approval — plan, build, test, and open a PR.",
+  title: `${APP_NAME} — BA-to-QA pipeline`,
+  description: APP_TAGLINE,
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
