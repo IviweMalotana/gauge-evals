@@ -3,6 +3,7 @@ import path from "path";
 import { chromium, type Browser, type Page, type Locator } from "playwright-core";
 import { completeJson, getAnthropic } from "../anthropic";
 import { features } from "../env";
+import { CHROMIUM_LAUNCH, chromiumExecutablePath } from "./chromium";
 
 /**
  * A small LLM-driven browser executor: given a natural-language scenario and a
@@ -45,14 +46,6 @@ Reply with a single JSON object only: { "steps": BrowserStep[] }.
 Start with a goto. Keep it under 10 steps. End with at least one expectText or
 expectNoError that captures the scenario's "Then".`;
 
-function execPath(): string | undefined {
-  return (
-    process.env.PLAYWRIGHT_EXECUTABLE_PATH ||
-    process.env.CHROMIUM_PATH ||
-    "/opt/pw-browsers/chromium"
-  );
-}
-
 async function planSteps(scenario: string, baseUrl: string): Promise<BrowserStep[]> {
   const json = await completeJson({
     system: PLAN_SYSTEM,
@@ -82,7 +75,10 @@ export async function runScenario(
     const steps = await planSteps(scenario, baseUrl);
     if (steps.length === 0) throw new Error("No steps planned");
 
-    browser = await chromium.launch({ headless: true, executablePath: execPath() });
+    browser = await chromium.launch({
+      ...CHROMIUM_LAUNCH,
+      executablePath: chromiumExecutablePath(),
+    });
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const page = await ctx.newPage();
     page.on("console", (m) => {

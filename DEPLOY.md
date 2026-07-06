@@ -44,6 +44,22 @@ ${APP_URL}/api/oauth/github/callback
 It must match `APP_URL` exactly (scheme + host), or the callback's CSRF/state
 check will reject the round-trip.
 
+## Docker build (recommended — enables the browser tests in production)
+
+The repo ships a `Dockerfile` (and `railway.json`) built on the official
+Playwright image, so **Chromium is available on the server** — the UX-check bug
+reproduction and the QA browser tests (acceptance / bug-fix / regression) run in
+production, not just locally.
+
+When a `Dockerfile` is present, **Railway uses it automatically** and ignores
+the Nixpacks build/start commands. It runs the Postgres switch, `prisma
+generate`, and `next build` inside the image, then `prisma db push && next
+start` on boot. You still set the same environment variables below.
+
+The browser code resolves Chromium in this order: `PLAYWRIGHT_EXECUTABLE_PATH` →
+the dev sandbox path → Playwright's managed browser (present in the Docker
+image). No configuration needed on the Docker path.
+
 ## Railway
 
 1. **New Project → Deploy from GitHub repo**, pick this repo.
