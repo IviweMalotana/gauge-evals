@@ -7,7 +7,9 @@ export const PIPELINE_STEPS: { key: string; label: string; status: RequestStatus
   { key: "approval", label: "Approval", status: "AWAITING_APPROVAL" },
   { key: "plan", label: "Plan", status: "PLANNING" },
   { key: "build", label: "Build", status: "BUILDING" },
-  { key: "test", label: "Test", status: "TESTING" },
+  { key: "acceptance", label: "Acceptance", status: "TESTING" },
+  { key: "bugfix", label: "Bug fix", status: "BUGFIX_REVIEW" },
+  { key: "regression", label: "Regression", status: "REGRESSION" },
   { key: "pr", label: "PR", status: "PR_CREATED" },
 ];
 
@@ -19,6 +21,8 @@ const ORDER: RequestStatus[] = [
   "PLANNING",
   "BUILDING",
   "TESTING",
+  "BUGFIX_REVIEW",
+  "REGRESSION",
   "PR_CREATED",
   "DONE",
 ];
@@ -49,6 +53,8 @@ export function isActive(status: string): boolean {
     "PLANNING",
     "BUILDING",
     "TESTING",
+    "BUGFIX_REVIEW",
+    "REGRESSION",
     "PR_CREATED",
   ].includes(status);
 }
@@ -61,7 +67,9 @@ export function statusLabel(status: string): string {
     AWAITING_APPROVAL: "Awaiting approval",
     PLANNING: "Planning",
     BUILDING: "Building",
-    TESTING: "Testing",
+    TESTING: "Acceptance testing",
+    BUGFIX_REVIEW: "Bug-fix review",
+    REGRESSION: "Regression",
     PR_CREATED: "PR created",
     DONE: "Done",
     REJECTED: "Rejected",

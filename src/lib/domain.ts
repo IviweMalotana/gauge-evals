@@ -19,6 +19,8 @@ export type RequestStatus =
   | "PLANNING"
   | "BUILDING"
   | "TESTING"
+  | "BUGFIX_REVIEW"
+  | "REGRESSION"
   | "PR_CREATED"
   | "DONE"
   | "REJECTED"

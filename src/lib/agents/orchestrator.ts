@@ -7,8 +7,9 @@ import { runUxCheck } from "./uxCheck";
 import { runBrd } from "./brd";
 import { runPlanner } from "./planner";
 import { runBuilder } from "./builder";
-import { runTester } from "./tester";
+import { runAcceptance, runBugFix, runRegression } from "./tester";
 import { runPr } from "./pr";
+import type { VerificationResult } from "./types";
 
 /**
  * The pipeline runs in two halves with a human-approval gate between them:
@@ -169,30 +170,30 @@ export async function runAfterApproval(requestId: string): Promise<void> {
       update: { branch: build.branch, summary: build.summary, diff: build.diff },
     });
 
-    // --- Tester ---
+    // --- Verification: acceptance → bug-fix review → regression ---
+    // Each is its own stage. Any failing check stops before the PR.
+
     request = await setStatus(requestId, "TESTING");
     ctx = await buildContext(request);
-    await logEvent(requestId, "tester", "Tester agent started.");
-    const test = await runTester(ctx, build, brd);
-    await db.testRun.upsert({
-      where: { requestId },
-      create: {
-        requestId,
-        passed: test.passed,
-        summary: test.summary,
-        output: JSON.stringify(test.output),
-      },
-      update: {
-        passed: test.passed,
-        summary: test.summary,
-        output: JSON.stringify(test.output),
-      },
-    });
+    await logEvent(requestId, "acceptance", "Acceptance testing started.");
+    const acceptance = await runAcceptance(ctx, build, brd);
+    await persistCheck(requestId, acceptance);
+    if (!acceptance.passed) return stopFailed(requestId, "acceptance", acceptance.summary);
 
-    if (!test.passed) {
-      await setStatus(requestId, "FAILED");
-      await logEvent(requestId, "tester", "Tests failed — stopping before PR.", undefined, "error");
-      return;
+    request = await setStatus(requestId, "BUGFIX_REVIEW");
+    ctx = await buildContext(request);
+    const bugfix = await runBugFix(ctx);
+    if (bugfix) {
+      await persistCheck(requestId, bugfix);
+      if (!bugfix.passed) return stopFailed(requestId, "bugfix", bugfix.summary);
+    }
+
+    request = await setStatus(requestId, "REGRESSION");
+    ctx = await buildContext(request);
+    const regression = await runRegression(ctx, brd);
+    if (regression) {
+      await persistCheck(requestId, regression);
+      if (!regression.passed) return stopFailed(requestId, "regression", regression.summary);
     }
 
     // --- PR ---
@@ -211,6 +212,26 @@ export async function runAfterApproval(requestId: string): Promise<void> {
   } catch (err) {
     await failRequest(requestId, err);
   }
+}
+
+async function persistCheck(requestId: string, r: VerificationResult): Promise<void> {
+  const data = {
+    passed: r.passed,
+    summary: r.summary,
+    output: JSON.stringify(r.output),
+    screenshots: JSON.stringify(r.screenshots),
+  };
+  await db.verificationCheck.upsert({
+    where: { requestId_kind: { requestId, kind: r.kind } },
+    create: { requestId, kind: r.kind, ...data },
+    update: data,
+  });
+  await logEvent(requestId, r.kind, r.summary, { passed: r.passed }, r.passed ? "info" : "warn");
+}
+
+async function stopFailed(requestId: string, stage: string, summary: string): Promise<void> {
+  await setStatus(requestId, "FAILED");
+  await logEvent(requestId, stage, `${summary} Stopping before PR.`, undefined, "error");
 }
 
 async function failRequest(requestId: string, err: unknown): Promise<void> {
