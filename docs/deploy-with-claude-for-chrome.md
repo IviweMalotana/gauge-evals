@@ -1,102 +1,126 @@
-# Deploy Baton to Railway with Claude for Chrome
+# Deploy Baton with Claude for Chrome
 
-Paste the prompt below into **Claude for Chrome** (the browser-driving agent),
-after filling in the `FILL THESE IN` block. The agent will drive Railway for
-you: create the project, add Postgres, set env vars, configure the build, deploy,
-and verify.
+Baton runs on **Railway** (a long-running Node host — it needs a persistent
+process, a background worker, and headless Chromium). Your domain
+`victorthelabel.com` lives on **Hostking**, which handles DNS only. So the deploy
+coordinates two systems:
 
-Everything the agent needs is also in [`DEPLOY.md`](../DEPLOY.md).
+- **Railway** — builds + runs the app (from the repo's `Dockerfile`), Postgres,
+  env vars, and the custom domain.
+- **Hostking** — one CNAME record pointing `ticketing.victorthelabel.com` at
+  Railway.
+
+Baton is a single Next.js app, so there's **no separate API service** — its API
+routes live at `ticketing.victorthelabel.com/api/...`. You don't need an
+`api.` subdomain.
+
+Because the repo ships a `Dockerfile` + `railway.json`, Railway builds with
+Docker automatically — **there are no build/start commands to configure**, and
+Chromium is baked in so the browser-driven QA tests work in production.
+
+Fill the two secrets in the block below, then paste the whole prompt into
+**Claude for Chrome**.
 
 ---
 
 ## The prompt
 
-> You are operating my browser to deploy a Next.js app called **Baton** to
-> **Railway**. Work carefully, confirm before anything destructive, and if you
-> get stuck or a screen doesn't match these steps, stop and tell me what you see
-> rather than guessing. Treat every value in the "FILL THESE IN" block as a
-> secret: only type them into Railway's Variables fields, never into a search
-> box, URL bar, chat, or anywhere they'd be logged or shown.
->
-> ### FILL THESE IN
-> - GitHub repo: `IviweMalotana/gauge-evals`
-> - Branch to deploy: `main`  (merge PR #1 first, or set this to
->   `claude/tender-knuth-9b68q6` for a preview deploy)
-> - `ANTHROPIC_API_KEY`: `<paste my Anthropic key>`
-> - `AUTH_SECRET`: `<paste a long random string, or generate one: 64 hex chars>`
-> - GitHub OAuth (optional, can skip on first deploy):
->   - `GITHUB_CLIENT_ID`: `<from a GitHub OAuth App, or leave blank>`
->   - `GITHUB_CLIENT_SECRET`: `<from a GitHub OAuth App, or leave blank>`
->
-> ### Steps
->
-> 1. Go to https://railway.app and make sure I'm signed in. If not, stop and ask
->    me to sign in, then continue.
->
-> 2. Create a new project: **New Project → Deploy from GitHub repo**. Select
->    `IviweMalotana/gauge-evals`. If Railway asks to install/authorize its GitHub
->    app for the repo, do so. Choose the branch from the FILL THESE IN block.
->
-> 3. Add a database: in the project, **New → Database → Add PostgreSQL**. Wait
->    for it to provision. This creates a `Postgres` service that exposes a
->    `DATABASE_URL`.
->
-> 4. Open the **app service** (the one built from the repo) → **Variables** tab.
->    Add these variables (New Variable for each):
->    - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`  (this is Railway's
->      reference syntax — type it exactly so it links to the Postgres service)
->    - `AUTH_SECRET` = the value from FILL THESE IN
->    - `ANTHROPIC_API_KEY` = the value from FILL THESE IN
->    - `ANTHROPIC_MODEL` = `claude-sonnet-4-5`
->    - `NODE_ENV` = `production`
->    - (Only if I provided them) `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`
->    - Leave `APP_URL` for step 7 (we need the domain first).
->
-> 5. Configure the build in the app service → **Settings**:
->    - **Build Command:**
->      `bash scripts/db-provider.sh postgresql && npm ci && npx prisma generate && npm run build`
->    - **Pre-Deploy Command** (a.k.a. release command, if the field exists):
->      `npx prisma db push`
->    - **Start Command:** `npm start`
->    - If there's no separate Pre-Deploy field, instead set the Build Command to:
->      `bash scripts/db-provider.sh postgresql && npm ci && npx prisma generate && npm run build && npx prisma db push`
->
-> 6. Trigger a deploy (Deploy / Redeploy). Open the **Deploy Logs** and watch
->    until it either succeeds (server listening) or fails. If it fails, read the
->    error and tell me what it says — don't retry blindly more than once.
->
-> 7. Give the app a public URL: app service → **Settings → Networking →
->    Generate Domain**. Copy the `https://…railway.app` URL. Then go back to
->    **Variables** and add:
->    - `APP_URL` = the generated `https://…` URL (no trailing slash)
->    Redeploy so `APP_URL` takes effect.
->
-> 8. Verify: open the `APP_URL` in a new tab. You should see the Baton landing
->    page. Click **Get started / Create your company**, register a test company,
->    and confirm you land on the dashboard. Report the final URL to me.
->
-> 9. (Optional — GitHub OAuth) Only if I gave you a `GITHUB_CLIENT_ID`: go to
->    https://github.com/settings/developers → the OAuth App → set the
->    **Authorization callback URL** to `<APP_URL>/api/oauth/github/callback`
->    (exactly matching APP_URL). Save. Then in Baton → Settings, click
->    **Connect GitHub** and confirm it round-trips back connected.
->
-> When done, give me: the live URL, whether the deploy logs were clean, and
-> anything you had to change from these steps.
+```
+You are operating my browser to deploy a Next.js app ("Baton") to Railway and
+connect it to my domain on Hostking. Work carefully, confirm before anything
+destructive, and if a screen doesn't match these steps STOP and tell me what you
+see. Treat the two secrets as sensitive — only type them into Railway's
+Variables fields, never into search, the URL bar, or chat. I'm logged into
+Railway, GitHub, and Hostking already; if any isn't, pause and ask me.
+
+SECRETS I'M PROVIDING:
+- ANTHROPIC_API_KEY = <<< FILL: my Anthropic key >>>
+- AUTH_SECRET       = <<< FILL: a 64-hex random string (openssl rand -hex 32) >>>
+
+FIXED:
+- GitHub repo: IviweMalotana/gauge-evals   (branch: main)
+- Final app URL: https://ticketing.victorthelabel.com
+- DNS host: Hostking (domain victorthelabel.com)
+
+PART A — DEPLOY ON RAILWAY (uses the repo's Dockerfile automatically)
+1. Go to https://railway.app; confirm I'm signed in.
+2. New Project → Deploy from GitHub repo → IviweMalotana/gauge-evals. Authorize
+   Railway's GitHub app if asked. Deploy the "main" branch.
+   NOTE: the repo has a Dockerfile + railway.json, so Railway builds with Docker
+   automatically. Do NOT set any Build or Start command — leave them blank.
+3. New → Database → Add PostgreSQL. Wait until it finishes provisioning.
+4. Open the APP service → Variables. Add:
+   - DATABASE_URL      = ${{Postgres.DATABASE_URL}}   (exact; links to Postgres)
+   - AUTH_SECRET       = (secret above)
+   - ANTHROPIC_API_KEY = (secret above)
+   - ANTHROPIC_MODEL   = claude-sonnet-4-5
+   - APP_URL           = https://ticketing.victorthelabel.com
+5. Deploy. Open Build + Deploy Logs and watch. The Docker build takes a few
+   minutes (it pulls the Playwright image). Wait for success ("Ready" /
+   listening on port). If it fails, read the error and tell me exactly what it
+   says — don't retry blindly.
+
+PART B — CUSTOM DOMAIN IN RAILWAY
+6. APP service → Settings → Networking → Custom Domain. Enter:
+   ticketing.victorthelabel.com
+7. Railway shows a DNS target (a value like "xxxxx.up.railway.app"). COPY that
+   exact value. Leave this tab open (it'll say "waiting for DNS").
+
+PART C — DNS RECORD IN HOSTKING
+8. Open my Hostking client area (https://hostking.co.za) → DNS management / DNS
+   Zone Editor for victorthelabel.com (may be under Domains → manage → DNS, or
+   cPanel → Zone Editor).
+9. Add a record:
+   - Type:  CNAME
+   - Name / Host:  ticketing
+   - Value / Target:  the Railway target from step 7
+   - TTL:  default
+   Save it. Tell me the exact record you created.
+
+PART D — FINALIZE
+10. Back in Railway's Custom Domain panel, wait for it to verify + issue SSL
+    (minutes up to ~a couple hours for DNS). If still pending after ~15 min,
+    tell me and stop — that's propagation, not an error.
+11. Once verified, redeploy the service.
+
+PART E — GITHUB OAUTH (so the pipeline can open real PRs)
+12. https://github.com/settings/developers → New OAuth App:
+    - Application name: Baton
+    - Homepage URL: https://ticketing.victorthelabel.com
+    - Authorization callback URL:
+      https://ticketing.victorthelabel.com/api/oauth/github/callback
+    Register it. Copy the Client ID; Generate a client secret and copy it.
+13. Railway → APP service → Variables, add:
+    - GITHUB_CLIENT_ID     = (Client ID)
+    - GITHUB_CLIENT_SECRET = (secret)
+    Redeploy.
+
+PART F — VERIFY
+14. Open https://ticketing.victorthelabel.com over HTTPS — you should see the
+    Baton landing page. Register a test company; confirm you reach the dashboard.
+15. Settings → Connect GitHub → authorize → confirm connected. Then set the
+    "App under test" URL to https://ticketing.victorthelabel.com and save.
+
+When done, report: the live URL + whether HTTPS works, the DNS record you added,
+whether the deploy logs were clean, and whether GitHub connected.
+```
 
 ---
 
 ## Notes for you (not the agent)
 
-- **Merge or preview?** Railway deploys a branch. Either merge PR #1 into `main`
-  and deploy `main`, or point the service at `claude/tender-knuth-9b68q6` for a
-  throwaway preview.
-- **Generating `AUTH_SECRET`:** run `openssl rand -hex 32` locally and paste the
-  output into the prompt.
-- **GitHub OAuth App:** create one at
-  https://github.com/settings/developers (New OAuth App). Homepage = your
-  `APP_URL`; callback = `<APP_URL>/api/oauth/github/callback`. You can add this
-  after the first deploy once you know the domain.
-- **Why the Postgres switch:** the repo ships on SQLite for local dev; the build
-  command flips it to Postgres so Railway's database is used (SQLite would be
-  wiped on redeploy).
+- **Fills:** `ANTHROPIC_API_KEY` = your Anthropic key; `AUTH_SECRET` =
+  `openssl rand -hex 32`. The GitHub Client ID/Secret are created by the agent in
+  Part E, not fills.
+- **DNS takes time.** The `ticketing` CNAME can take minutes to a couple of hours
+  before Railway issues SSL. That's normal propagation, not an error.
+- **Architecture:** Railway = runtime; Hostking = DNS only. One `CNAME`
+  (`ticketing` → Railway's target) connects them.
+- **No `api.` subdomain needed** — Baton is one Next.js app; its API routes are
+  under the same domain.
+- **Preview URLs (later):** once a Railway PR environment exists, grab its URL
+  pattern and set the per-branch preview template in Settings (with `{branch}`)
+  so the QA browser tests verify the exact change per PR.
+
+See [`DEPLOY.md`](../DEPLOY.md) for the full env-var contract and the Docker
+build details.
