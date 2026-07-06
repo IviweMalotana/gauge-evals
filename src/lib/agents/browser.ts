@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { chromium, type Browser } from "playwright-core";
+import { CHROMIUM_LAUNCH, chromiumExecutablePath } from "./chromium";
 
 /**
  * Real browser automation for the UX-check agent. We launch Chromium, drive it
@@ -25,15 +26,6 @@ export interface BrowserObservation {
   error?: string;
 }
 
-/** Resolve the Chromium executable. Prefers the pre-installed browser. */
-function resolveExecutablePath(): string | undefined {
-  return (
-    process.env.PLAYWRIGHT_EXECUTABLE_PATH ||
-    process.env.CHROMIUM_PATH ||
-    "/opt/pw-browsers/chromium" // stable symlink in this environment
-  );
-}
-
 const ERROR_TEXT = [
   "internal server error",
   "something went wrong",
@@ -54,9 +46,11 @@ export async function reproduceInBrowser(
   let browser: Browser | null = null;
 
   try {
-    const executablePath = resolveExecutablePath();
     steps.push("Launch headless Chromium");
-    browser = await chromium.launch({ headless: true, executablePath });
+    browser = await chromium.launch({
+      ...CHROMIUM_LAUNCH,
+      executablePath: chromiumExecutablePath(),
+    });
 
     const context = await browser.newContext({
       viewport: { width: 390, height: 844 }, // mobile-ish, matches many reports
