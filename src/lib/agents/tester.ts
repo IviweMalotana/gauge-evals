@@ -2,38 +2,44 @@ import { completeJson, getAnthropic } from "../anthropic";
 import { features } from "../env";
 import { getFile, type GhClient } from "../github";
 import { canDriveBrowser } from "./browserAgent";
-import { acceptanceTest, bugFixReview, regressionSweep } from "./verification";
-import type { AgentContext, BrdResult, BuildResult, TestResult } from "./types";
+import { acceptanceTest, bugFixReview, regressionSweep, type CheckReport } from "./verification";
+import type { AgentContext, BrdResult, BuildResult, VerificationResult } from "./types";
 
 /**
- * Tester agent — verifies the change after the build. Preference order:
+ * The verification stage, split into three separately-tracked checks so each is
+ * its own pipeline stage with its own UI card:
  *
- *  1. Browser verification (when an app URL is set): performs the acceptance
- *     criteria as real human actions, re-checks that a reported bug is fixed,
- *     and runs a regression sweep — all driving real Chromium.
- *  2. Code acceptance review (when code was committed but no app URL): asks
- *     Claude to judge the criteria against the committed diff.
- *  3. Stub pass (nothing to verify against).
+ *  - runAcceptance — always runs; prefers real browser UX, falls back to a code
+ *    review of the diff, then a stub.
+ *  - runBugFix     — only for bug requests when a browser target is available.
+ *  - runRegression — only when a browser target is available.
+ *
+ * A browser target means the company's app URL is set and we can plan steps
+ * (API key present).
  */
-export async function runTester(
+
+export function browserTargetUrl(ctx: AgentContext): string | null {
+  return ctx.appBaseUrl && canDriveBrowser() ? ctx.appBaseUrl : null;
+}
+
+export async function runAcceptance(
   ctx: AgentContext,
   build: BuildResult,
   brd: BrdResult
-): Promise<TestResult> {
-  const url = ctx.appBaseUrl ?? null;
+): Promise<VerificationResult> {
+  const url = browserTargetUrl(ctx);
 
-  // 1. Real browser verification against the running app.
-  if (url && canDriveBrowser()) {
+  if (url) {
     try {
-      return await browserVerification(ctx, brd, url);
+      await ctx.log(`Acceptance testing against the running app at ${url}.`);
+      return fromReport("acceptance", await acceptanceTest(ctx, brd, url));
     } catch (err) {
-      await ctx.log(`Browser verification failed (${(err as Error).message}); trying code review.`);
+      await ctx.log(`Browser acceptance failed (${(err as Error).message}); trying code review.`);
     }
-  } else if (!url) {
-    await ctx.log("No app URL set — browser verification skipped. Set it in Settings.");
+  } else {
+    await ctx.log("No app URL set — acceptance falls back to a code review.");
   }
 
-  // 2. Code acceptance review against the committed diff.
   if (ctx.githubToken && ctx.repo && build.committed && features.anthropic && getAnthropic()) {
     try {
       return await codeAcceptanceReview(ctx, build, brd);
@@ -42,39 +48,45 @@ export async function runTester(
     }
   }
 
-  // 3. Stub.
-  await ctx.log("Tester running as a stub — set an app URL or connect a repo for real checks.");
-  return stubResult();
+  return {
+    kind: "acceptance",
+    passed: true,
+    summary: "All acceptance scenarios passed (tester stub).",
+    output: ["PASS  acceptance/scenario-1", "PASS  acceptance/scenario-2", "PASS  lint"],
+    screenshots: [],
+  };
 }
 
-async function browserVerification(
+export async function runBugFix(ctx: AgentContext): Promise<VerificationResult | null> {
+  const url = browserTargetUrl(ctx);
+  if (!url || ctx.request.type !== "BUG") return null;
+  await ctx.log(`Bug-fix review: re-checking the reported failure at ${url}.`);
+  return fromReport("bugfix", await bugFixReview(ctx, url));
+}
+
+export async function runRegression(
   ctx: AgentContext,
-  brd: BrdResult,
-  url: string
-): Promise<TestResult> {
-  await ctx.log(`Verifying against the running app at ${url}.`);
+  brd: BrdResult
+): Promise<VerificationResult | null> {
+  const url = browserTargetUrl(ctx);
+  if (!url) return null;
+  await ctx.log(`Regression sweep against ${url}.`);
+  return fromReport("regression", await regressionSweep(ctx, brd, url));
+}
 
-  const acceptance = await acceptanceTest(ctx, brd, url);
-  await ctx.log(`${acceptance.label}: ${acceptance.passed ? "passed" : "failed"}.`, acceptance.lines);
-
-  const isBug = ctx.request.type === "BUG";
-  const bugFix = isBug ? await bugFixReview(ctx, url) : null;
-  if (bugFix) await ctx.log(`${bugFix.label}: ${bugFix.passed ? "passed" : "failed"}.`, bugFix.lines);
-
-  const regression = await regressionSweep(ctx, brd, url);
-  await ctx.log(`${regression.label}: ${regression.passed ? "passed" : "failed"}.`, regression.lines);
-
-  const reports = [acceptance, ...(bugFix ? [bugFix] : []), regression];
-  const passed = reports.every((r) => r.passed);
-  const output = reports.flatMap((r) => [`— ${r.label} —`, ...r.lines]);
-  const summary = passed
-    ? `All browser checks passed (${reports.map((r) => r.label.toLowerCase()).join(", ")}).`
-    : `Verification found issues in: ${reports
-        .filter((r) => !r.passed)
-        .map((r) => r.label)
-        .join(", ")}.`;
-
-  return { passed, summary, output };
+function fromReport(
+  kind: VerificationResult["kind"],
+  report: CheckReport
+): VerificationResult {
+  return {
+    kind,
+    passed: report.passed,
+    summary: report.passed
+      ? `${report.label} passed.`
+      : `${report.label} found issues.`,
+    output: report.lines,
+    screenshots: report.screenshots,
+  };
 }
 
 // --- Fallback: LLM review of the committed code against the criteria ---
@@ -88,7 +100,7 @@ async function codeAcceptanceReview(
   ctx: AgentContext,
   build: BuildResult,
   brd: BrdResult
-): Promise<TestResult> {
+): Promise<VerificationResult> {
   const client: GhClient = { token: ctx.githubToken!, repo: ctx.repo! };
   await ctx.log(`Reviewing ${build.filesChanged.length} changed file(s) on ${build.branch}.`);
 
@@ -121,19 +133,11 @@ async function codeAcceptanceReview(
   if (results.length === 0) throw new Error("Reviewer returned no results");
 
   const passed = typeof json.passed === "boolean" ? json.passed : results.every((r) => r.passed);
-  const output = ["— Acceptance (code review) —", ...results.map(
+  const output = results.map(
     (r) => `${r.passed ? "PASS" : "FAIL"}  ${r.criterion}${r.note ? ` — ${r.note}` : ""}`
-  )];
+  );
   const summary =
     String(json.summary ?? "").trim() ||
-    `${results.filter((r) => r.passed).length}/${results.length} acceptance criteria met.`;
-  return { passed, summary, output };
-}
-
-function stubResult(): TestResult {
-  return {
-    passed: true,
-    summary: "All acceptance scenarios passed (tester stub).",
-    output: ["PASS  acceptance/scenario-1", "PASS  acceptance/scenario-2", "PASS  lint"],
-  };
+    `${results.filter((r) => r.passed).length}/${results.length} acceptance criteria met (code review).`;
+  return { kind: "acceptance", passed, summary, output, screenshots: [] };
 }

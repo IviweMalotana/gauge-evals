@@ -33,7 +33,7 @@ export default async function RequestDetail({
       brd: true,
       plan: true,
       build: true,
-      testRun: true,
+      checks: true,
       pullReq: true,
       approvals: {
         orderBy: { createdAt: "desc" },
@@ -47,7 +47,16 @@ export default async function RequestDetail({
   const criteria = parseArray(request.brd?.acceptanceCriteria);
   const uxSteps = parseArray(request.uxCheck?.steps);
   const planSteps = parseArray(request.plan?.steps);
-  const testOutput = parseArray(request.testRun?.output);
+
+  const CHECK_META: Record<string, string> = {
+    acceptance: "Acceptance (UX)",
+    bugfix: "Bug-fix review",
+    regression: "Regression",
+  };
+  const checkOrder = ["acceptance", "bugfix", "regression"];
+  const checks = [...request.checks].sort(
+    (a, b) => checkOrder.indexOf(a.kind) - checkOrder.indexOf(b.kind)
+  );
 
   return (
     <div>
@@ -212,16 +221,38 @@ export default async function RequestDetail({
         </div>
       )}
 
-      {request.testRun && (
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>Tests</h3>
-          <p>
-            <span className="badge">{request.testRun.passed ? "PASSED" : "FAILED"}</span>{" "}
-            {request.testRun.summary}
-          </p>
-          <pre>{testOutput.join("\n")}</pre>
-        </div>
-      )}
+      {checks.map((c) => {
+        const shots = parseArray(c.screenshots);
+        return (
+          <div className="card" key={c.id}>
+            <h3 style={{ marginTop: 0 }}>{CHECK_META[c.kind] ?? c.kind}</h3>
+            <p>
+              <span className={`badge ${c.passed ? "feature" : "bug"}`}>
+                {c.passed ? "PASSED" : "FAILED"}
+              </span>{" "}
+              {c.summary}
+            </p>
+            <pre>{parseArray(c.output).join("\n")}</pre>
+            {shots.length > 0 && (
+              <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+                {shots.map((src) => (
+                  <a key={src} href={src} target="_blank" rel="noreferrer">
+                    <img
+                      src={src}
+                      alt="verification screenshot"
+                      style={{
+                        maxWidth: 220,
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                      }}
+                    />
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       {request.pullReq && (
         <div className="card" style={{ borderColor: "var(--accent-2)" }}>

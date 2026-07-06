@@ -95,7 +95,7 @@ model Request {
   brd       Brd?
   plan      Plan?
   build     Build?
-  testRun   TestRun?
+  checks    VerificationCheck[]
   pullReq   PullRequestRef?
   approvals Approval[]
   events    PipelineEvent[]
@@ -166,14 +166,22 @@ model Build {
   createdAt  DateTime @default(now())
 }
 
-model TestRun {
-  id        String   @id @default(cuid())
-  requestId String   @unique
-  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  passed    Boolean  @default(false)
-  summary   String
-  output    String   // JSON array of test result lines
-  createdAt DateTime @default(now())
+// One record per verification check (acceptance UX, bug-fix review,
+// regression). Each is its own pipeline stage with its own card + screenshots.
+model VerificationCheck {
+  id          String   @id @default(cuid())
+  requestId   String
+  request     Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  kind        String // "acceptance" | "bugfix" | "regression"
+  passed      Boolean  @default(false)
+  summary     String
+  output      String // JSON array of result lines
+  screenshots String   @default("[]") // JSON array of artifact paths
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([requestId, kind])
+  @@index([requestId])
 }
 
 model PullRequestRef {

@@ -50,10 +50,14 @@ export interface BuildResult {
   filesChanged: string[];
 }
 
-export interface TestResult {
+export type VerificationKind = "acceptance" | "bugfix" | "regression";
+
+export interface VerificationResult {
+  kind: VerificationKind;
   passed: boolean;
   summary: string;
   output: string[];
+  screenshots: string[];
 }
 
 export interface PrResult {
