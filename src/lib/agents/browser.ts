@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { chromium, type Browser } from "playwright-core";
+import type { Browser } from "playwright-core";
 import { CHROMIUM_LAUNCH, chromiumExecutablePath } from "./chromium";
 
 /**
@@ -47,6 +47,9 @@ export async function reproduceInBrowser(
 
   try {
     steps.push("Launch headless Chromium");
+    // Import playwright-core lazily so it is NOT loaded at server boot (keeps
+    // startup fast and low-memory; the browser is only needed on demand).
+    const { chromium } = await import("playwright-core");
     browser = await chromium.launch({
       ...CHROMIUM_LAUNCH,
       executablePath: chromiumExecutablePath(),
