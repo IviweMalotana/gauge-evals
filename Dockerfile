@@ -25,5 +25,6 @@ RUN bash scripts/db-provider.sh postgresql \
 
 EXPOSE 3000
 ENV NODE_ENV=production
-# Sync the schema, then start. (Railway injects env vars at runtime.)
-CMD ["sh", "-c", "npx prisma db push && npm start"]
+# Loud, fail-fast start: logs boot state, applies the schema, then execs
+# `next start` bound to 0.0.0.0:$PORT. See scripts/start.sh.
+CMD ["sh", "scripts/start.sh"]

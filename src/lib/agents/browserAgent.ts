@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { chromium, type Browser, type Page, type Locator } from "playwright-core";
+import type { Browser, Page, Locator } from "playwright-core";
 import { completeJson, getAnthropic } from "../anthropic";
 import { features } from "../env";
 import { CHROMIUM_LAUNCH, chromiumExecutablePath } from "./chromium";
@@ -75,6 +75,8 @@ export async function runScenario(
     const steps = await planSteps(scenario, baseUrl);
     if (steps.length === 0) throw new Error("No steps planned");
 
+    // Lazy import so playwright-core isn't pulled into the server startup graph.
+    const { chromium } = await import("playwright-core");
     browser = await chromium.launch({
       ...CHROMIUM_LAUNCH,
       executablePath: chromiumExecutablePath(),
