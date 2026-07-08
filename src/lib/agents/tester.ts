@@ -39,7 +39,7 @@ export async function runAcceptance(
       await ctx.log(`Browser acceptance failed (${(err as Error).message}); trying code review.`);
     }
   } else {
-    await ctx.log("No app URL set — acceptance falls back to a code review.");
+    await ctx.log("No branch preview — acceptance verifies the committed diff by code review.");
   }
 
   if (ctx.githubToken && ctx.repo && build.committed && features.anthropic && getAnthropic()) {

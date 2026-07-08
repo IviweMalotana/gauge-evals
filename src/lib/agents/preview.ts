@@ -79,8 +79,16 @@ export async function resolveTestTarget(
       await log(`Preview is live — verifying the actual change at ${url}.`);
       return { url, source: "preview" };
     }
-    await log("Preview did not come up in time; falling back to the app URL.");
+    await log("Preview did not come up in time — verifying the diff by code review instead.");
+    return { url: null, source: "none" };
   }
-  if (ctx.appBaseUrl) return { url: ctx.appBaseUrl, source: "appBaseUrl" };
+  // No preview configured. We deliberately do NOT browser-test the production
+  // app URL here: it doesn't contain the branch's change, so a browser check
+  // could never pass for an unmerged change. Fall back to reviewing the
+  // committed diff (code acceptance review) instead.
+  await log(
+    "No per-branch preview URL configured — verifying the committed diff by code review. " +
+      "Set a preview URL template in Settings to run real browser checks against the change."
+  );
   return { url: null, source: "none" };
 }
