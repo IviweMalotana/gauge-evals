@@ -155,15 +155,23 @@ Return the file changes as JSON.`,
     maxTokens: 4000,
   });
 
-  const proposed = Array.isArray(json.files)
+  const raw = Array.isArray(json.files)
     ? (json.files as unknown[])
         .map((f) => f as { path?: unknown; contents?: unknown })
         .filter((f) => typeof f.path === "string" && typeof f.contents === "string")
         .map((f) => ({ path: String(f.path), contents: String(f.contents) }))
-        .filter((f) => !/[()]|\.\.\.|\s/.test(f.path))
-        .slice(0, MAX_CHANGED_FILES)
     : [];
-  if (proposed.length === 0) throw new Error("Model proposed no file changes");
+  const { accepted: proposed, rejected } = filterProposedFiles(raw, sourceFiles);
+  if (rejected.length > 0) {
+    await ctx.log(`Rejected ${rejected.length} unsafe proposed path(s).`, { rejected });
+  }
+  if (proposed.length === 0) {
+    throw new Error(
+      raw.length === 0
+        ? "Model proposed no file changes"
+        : `All proposed paths were rejected as unsafe: ${raw.map((f) => f.path).join(", ")}`
+    );
+  }
 
   // Validate against the real tree; new files are allowed but called out.
   const newFiles = proposed.filter((f) => !sourceFiles.includes(f.path)).map((f) => f.path);
@@ -200,6 +208,35 @@ Return the file changes as JSON.`,
   ].join("\n");
 
   return { branch, summary, diff, committed: true, filesChanged: changed };
+}
+
+/**
+ * Validate proposed file paths against the REAL repo tree.
+ *
+ * A path that exists in the tree is always acceptable — including Next.js
+ * route-group paths like `src/app/(auth)/login/page.tsx` (an earlier regex
+ * guard rejected any parentheses and silently discarded correct edits).
+ * A new path is acceptable only if it looks like a sane relative repo path.
+ */
+export function filterProposedFiles(
+  proposed: { path: string; contents: string }[],
+  sourceFiles: string[]
+): { accepted: { path: string; contents: string }[]; rejected: string[] } {
+  const existing = new Set(sourceFiles);
+  const saneNewPath = (p: string) =>
+    !/\s/.test(p) &&
+    !p.includes("..") &&
+    !p.startsWith("/") &&
+    /^[\w\-./()[\]@]+$/.test(p) &&
+    /\.[a-z0-9]+$/i.test(p.split("/").pop() ?? ""); // real files have extensions
+
+  const accepted: { path: string; contents: string }[] = [];
+  const rejected: string[] = [];
+  for (const f of proposed) {
+    if (existing.has(f.path) || saneNewPath(f.path)) accepted.push(f);
+    else rejected.push(f.path);
+  }
+  return { accepted: accepted.slice(0, MAX_CHANGED_FILES), rejected };
 }
 
 /** Put likely-app code first so a capped list keeps the important paths. */
