@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser, can } from "@/lib/auth";
 import { env, features } from "@/lib/env";
-import { getAnthropic } from "@/lib/anthropic";
+import { completeText } from "@/lib/anthropic";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Admin-only diagnostic: makes a tiny streamed call to the Anthropic API and
- * reports exactly what happens — so an "it's not working" turns into a precise
- * cause (bad key = 401, bad model = 404, real network failure, etc.). Never
- * returns the API key; only the error status/message.
+ * Admin-only diagnostic: makes a tiny call over the SAME transport the agents
+ * use (raw node:https, SSE) and reports exactly what happens. Never returns the
+ * API key; only the error status/message.
  */
 export async function GET() {
   const user = await getCurrentUser();
@@ -20,39 +19,32 @@ export async function GET() {
   const base = {
     keyConfigured: features.anthropic,
     model: env.ANTHROPIC_MODEL,
+    transport: "node:https (raw, SSE, no fetch)",
   };
 
-  const anthropic = getAnthropic();
-  if (!anthropic) {
+  if (!features.anthropic) {
     return NextResponse.json({ ...base, ok: false, reason: "ANTHROPIC_API_KEY not set" });
   }
 
   const started = Date.now();
   try {
-    const stream = anthropic.messages.stream({
-      model: env.ANTHROPIC_MODEL,
-      max_tokens: 16,
-      messages: [{ role: "user", content: "Reply with the single word: pong" }],
+    const reply = await completeText({
+      system: "You are a connectivity check.",
+      user: "Reply with the single word: pong",
+      maxTokens: 16,
     });
-    const message = await stream.finalMessage();
-    const reply = message.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { text: string }).text)
-      .join("")
-      .trim();
     return NextResponse.json({
       ...base,
       ok: true,
       ms: Date.now() - started,
       reply: reply.slice(0, 60),
-      usage: message.usage,
     });
   } catch (err) {
     const e = err as {
       name?: string;
       status?: number;
       message?: string;
-      error?: unknown;
+      code?: string;
       cause?: { message?: string; code?: string };
     };
     return NextResponse.json({
@@ -61,6 +53,7 @@ export async function GET() {
       ms: Date.now() - started,
       errorName: e?.name ?? null,
       status: e?.status ?? null,
+      code: e?.code ?? null,
       message: String(e?.message ?? err).slice(0, 500),
       cause: e?.cause ? { message: e.cause.message, code: e.cause.code } : null,
     });
