@@ -126,6 +126,32 @@ export async function getTree(
   return { entries: res.tree ?? [], truncated: Boolean(res.truncated) };
 }
 
+export interface DiffFile {
+  filename: string;
+  status: string; // added | modified | removed | renamed
+  additions: number;
+  deletions: number;
+  patch?: string; // unified diff (omitted by GitHub for very large/binary files)
+}
+
+/**
+ * The diff of `head` relative to `base` (3-dot, i.e. what a PR would show) —
+ * GitHub's authoritative patch per changed file. Used to review the actual
+ * change instead of re-reading whole files.
+ */
+export async function compareCommits(
+  c: GhClient,
+  base: string,
+  head: string
+): Promise<DiffFile[]> {
+  const res = await gh<{ files?: DiffFile[] }>(
+    c,
+    "GET",
+    `/repos/${c.repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`
+  );
+  return res.files ?? [];
+}
+
 /** List the entries directly under a directory at a ref (empty if missing). */
 export async function listDir(
   c: GhClient,

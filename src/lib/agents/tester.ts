@@ -1,6 +1,6 @@
 import { completeJson, getAnthropic } from "../anthropic";
 import { features } from "../env";
-import { getFile, type GhClient } from "../github";
+import { compareCommits, getDefaultBranch, getFile, type GhClient } from "../github";
 import { canDriveBrowser } from "./browserAgent";
 import { acceptanceTest, bugFixReview, regressionSweep, type CheckReport } from "./verification";
 import type { AgentContext, BrdResult, BuildResult, VerificationResult } from "./types";
@@ -97,8 +97,16 @@ function fromReport(
 
 // --- Fallback: LLM review of the committed code against the criteria ---
 
-const REVIEW_SYSTEM = `You are a strict but fair QA reviewer. Given acceptance criteria and the
-current contents of the changed files, judge whether each criterion is met.
+const REVIEW_SYSTEM = `You are a precise QA reviewer judging a CODE DIFF against acceptance criteria.
+
+You are given the unified diff of the change (lines starting with "-" were
+removed, "+" were added). Base your judgment ONLY on the diff, and read it
+literally — an added "+" line IS present in the new code.
+
+For each criterion, decide if the diff satisfies it, and in "note" QUOTE the
+specific "+"/"-" diff line that supports your verdict. Do not claim a change is
+absent if a matching "+" line exists in the diff.
+
 Reply with a single JSON object only:
 { "summary": string, "passed": boolean, "results": [ { "criterion": string, "passed": boolean, "note": string } ] }`;
 
@@ -108,21 +116,41 @@ async function codeAcceptanceReview(
   brd: BrdResult
 ): Promise<VerificationResult> {
   const client: GhClient = { token: ctx.githubToken!, repo: ctx.repo! };
-  await ctx.log(`Reviewing ${build.filesChanged.length} changed file(s) on ${build.branch}.`);
 
-  const files: { path: string; contents: string }[] = [];
-  for (const path of build.filesChanged) {
-    const file = await getFile(client, path, build.branch);
-    if (file) files.push({ path, contents: file.contents });
+  // Review the actual DIFF (base...branch) — GitHub's authoritative patch, the
+  // same thing a PR shows. Far more reliable than re-reading whole files.
+  const { base } = await getDefaultBranch(client);
+  const diffFiles = await compareCommits(client, base, build.branch);
+  await ctx.log(`Reviewing the diff of ${diffFiles.length} changed file(s) on ${build.branch}.`, {
+    files: diffFiles.map((f) => f.filename),
+  });
+
+  const diffText = diffFiles.length
+    ? diffFiles
+        .map((f) => {
+          const header = `=== ${f.filename} (${f.status}, +${f.additions}/-${f.deletions}) ===`;
+          // Fall back to the branch's file content if GitHub omitted the patch.
+          return `${header}\n${f.patch ?? "(patch unavailable)"}`;
+        })
+        .join("\n\n")
+    : "(no file differences found between base and branch)";
+
+  // If patches were omitted for everything, include the changed files' contents.
+  let contentBlock = "";
+  if (diffFiles.length > 0 && diffFiles.every((f) => !f.patch)) {
+    const parts: string[] = [];
+    for (const f of diffFiles) {
+      const file = await getFile(client, f.filename, build.branch);
+      if (file) parts.push(`=== ${f.filename} (full contents) ===\n${file.contents}`);
+    }
+    contentBlock = `\n\nFull contents (patches were unavailable):\n${parts.join("\n\n")}`;
   }
 
   const json = await completeJson({
     system: REVIEW_SYSTEM,
     user: `Acceptance criteria:\n${brd.acceptanceCriteria
       .map((c, i) => `${i + 1}. ${c}`)
-      .join("\n")}\n\nChanged files:\n${files
-      .map((f) => `\n=== ${f.path} ===\n${f.contents}`)
-      .join("\n")}\n\nJudge each criterion and return JSON.`,
+      .join("\n")}\n\nUnified diff of the change:\n${diffText}${contentBlock}\n\nJudge each criterion against the diff and return JSON.`,
     maxTokens: 2000,
   });
 
