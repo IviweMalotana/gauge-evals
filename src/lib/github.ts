@@ -86,6 +86,46 @@ export async function getFile(
   }
 }
 
+export interface TreeEntry {
+  path: string;
+  type: "blob" | "tree";
+  sha: string;
+}
+
+/**
+ * List every path in the repo at a ref (recursive). Used to discover
+ * requirement files and to learn the codebase structure. `truncated` is true
+ * when GitHub caps the response for very large repos.
+ */
+export async function getTree(
+  c: GhClient,
+  ref: string
+): Promise<{ entries: TreeEntry[]; truncated: boolean }> {
+  const res = await gh<{ tree: TreeEntry[]; truncated: boolean }>(
+    c,
+    "GET",
+    `/repos/${c.repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`
+  );
+  return { entries: res.tree ?? [], truncated: Boolean(res.truncated) };
+}
+
+/** List the entries directly under a directory at a ref (empty if missing). */
+export async function listDir(
+  c: GhClient,
+  dirPath: string,
+  ref: string
+): Promise<{ path: string; name: string; type: "file" | "dir"; sha: string }[]> {
+  try {
+    const res = await gh<
+      { path: string; name: string; type: "file" | "dir"; sha: string }[]
+    >(c, "GET", `/repos/${c.repo}/contents/${encodePath(dirPath)}?ref=${encodeURIComponent(ref)}`);
+    return Array.isArray(res) ? res : [];
+  } catch (err) {
+    if (String(err).includes("→ 404")) return [];
+    throw err;
+  }
+}
+
 /** Create or update a file on a branch. */
 export async function putFile(
   c: GhClient,

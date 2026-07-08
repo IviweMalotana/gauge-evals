@@ -36,8 +36,9 @@ model Company {
   appBaseUrl         String? // where the company's app runs; UX-check drives it
   previewUrlTemplate String? // per-branch preview URL, e.g. "https://app-{branch}.up.railway.app"
 
-  members  Membership[]
-  requests Request[]
+  members      Membership[]
+  requests     Request[]
+  requirements RequirementDoc[]
 }
 
 model User {
@@ -193,6 +194,33 @@ model PullRequestRef {
   url       String
   title     String
   createdAt DateTime @default(now())
+}
+
+// Searchable index of the living requirements corpus. The source of truth is
+// version-controlled files in the target repo (requirements/<category>/REQ-*.md);
+// Baton mirrors them here so it can search and run impact analysis quickly.
+// Re-synced from the repo whenever a PR that touches requirements merges.
+model RequirementDoc {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  repo            String // owner/name the requirement belongs to
+  reqId           String // stable id in the file, e.g. REQ-ab12cd34
+  category        String // ux | design | backend | data | api
+  title           String
+  status          String   @default("accepted") // draft | accepted | superseded
+  version         Int      @default(1)
+  related         String   @default("[]") // JSON array of related reqIds
+  codeAreas       String   @default("[]") // JSON array of file paths/globs it governs
+  body            String // the behavior spec (markdown)
+  filePath        String // requirements/<category>/REQ-*.md
+  updatedBySource String? // requestId that last changed it
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([companyId, reqId])
+  @@index([companyId])
+  @@index([companyId, category])
 }
 
 // Background work queue. Filing a request (or approving a BRD) enqueues a Job;
