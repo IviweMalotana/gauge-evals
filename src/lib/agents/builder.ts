@@ -1,9 +1,10 @@
 import { completeJson, getAnthropic } from "../anthropic";
 import { env, features } from "../env";
 import {
-  ensureBranch,
+  forceBranch,
   getDefaultBranch,
   getFile,
+  getTree,
   putFile,
   type GhClient,
 } from "../github";
@@ -11,25 +12,36 @@ import { APP_NAME, BRANCH_PREFIX } from "../brand";
 import type { AgentContext, BrdResult, BuildResult, PlanResult } from "./types";
 
 /**
- * Builder agent.
+ * Builder agent — GROUNDED in the real repo.
  *
- * When a GitHub repo + token are connected and an API key is set, this performs
- * a REAL build: it creates the branch, reads the plan's target files from the
- * repo, asks Claude for concrete file changes that satisfy the acceptance
- * criteria, and commits them to the branch. The PR agent then opens a PR for
- * the branch, which a human reviews before anything merges.
+ * When a GitHub repo + token are connected and an API key is set, it performs a
+ * real build in three grounded steps:
+ *   1. List the repo's actual source files (git tree).
+ *   2. Ask Claude to pick which existing files the change lives in; read them.
+ *   3. Ask Claude for the concrete file changes and commit them to the branch.
  *
- * Without a repo/token/key it falls back to a stub (synthetic branch + diff, no
- * commits) so the pipeline still completes in a demo.
+ * The branch is force-reset to the base at the start of every build, so reruns
+ * start clean instead of stacking on a previous attempt's commits. Proposed
+ * paths are validated against the real tree — editing a file that doesn't
+ * exist is only allowed as an explicit new file, and is logged as such.
  */
 
-const SYSTEM = `You are a senior software engineer implementing an approved change in an
-existing codebase. You are given a plan, acceptance criteria, and the current
-contents of the files most likely to be involved.
+const PICK_SYSTEM = `You are a senior engineer locating where a change should be made in an
+existing codebase. You are given the request, the plan, and the repository's
+actual file list. Choose the files (max 5) most likely to need reading/editing.
+Only choose paths that appear in the provided file list — never invent paths.
+Reply with a single JSON object only: { "files": string[] }`;
+
+const BUILD_SYSTEM = `You are a senior software engineer implementing an approved change in an
+existing codebase. You are given the plan, acceptance criteria, the repository's
+file list, and the current contents of the most relevant files.
 
 Produce the MINIMAL set of file changes that satisfies the acceptance criteria,
-consistent with the existing code's style and conventions. Prefer editing
-existing files over adding new ones. Do not touch unrelated code.
+consistent with the existing code's style and conventions.
+- STRONGLY prefer editing the provided existing files.
+- Only create a new file if the change genuinely requires one; if you do, its
+  path must fit the repository's existing structure (see the file list).
+- Never touch unrelated code.
 
 Reply with a single JSON object only, matching exactly this shape:
 {
@@ -38,9 +50,12 @@ Reply with a single JSON object only, matching exactly this shape:
 }
 Include at most 6 files. "contents" must be the complete file, not a diff.`;
 
-// Cap how much we fetch/commit to keep a single build bounded.
-const MAX_CONTEXT_FILES = 8;
+const MAX_TREE_PATHS = 400;
+const MAX_CONTEXT_FILES = 5;
 const MAX_CHANGED_FILES = 6;
+
+const SOURCE_EXT = /\.(tsx?|jsx?|mjs|cjs|css|scss|html|json|prisma|md|py|rb|go|rs|java|vue|svelte)$/i;
+const EXCLUDED = /^(node_modules|\.next|dist|build|coverage|public\/artifacts)\/|package-lock\.json$/;
 
 export async function runBuilder(
   ctx: AgentContext,
@@ -73,16 +88,51 @@ async function realBuild(
   const client: GhClient = { token: ctx.githubToken!, repo: ctx.repo! };
   await ctx.log(`Builder working on ${ctx.repo} branch ${branch}.`);
 
-  // Create the branch off the repo's default branch.
+  // Start every build from a clean base — reruns must not inherit junk commits.
   const { base, baseSha } = await getDefaultBranch(client);
-  await ensureBranch(client, branch, baseSha);
+  await forceBranch(client, branch, baseSha);
 
-  // Gather context: current contents of the plan's real-looking target files.
-  const candidates = plan.files
-    .filter((p) => p && !/[()]|\s|\.\.\./.test(p)) // drop planner placeholders
+  // Ground in the repo's REAL file list.
+  const { entries, truncated } = await getTree(client, base);
+  const sourceFiles = entries
+    .filter((e) => e.type === "blob" && SOURCE_EXT.test(e.path) && !EXCLUDED.test(e.path))
+    .map((e) => e.path);
+  const treeList = prioritize(sourceFiles).slice(0, MAX_TREE_PATHS);
+  await ctx.log(
+    `Repo tree: ${sourceFiles.length} source file(s)${truncated ? " (tree truncated by GitHub)" : ""}.`
+  );
+
+  const requestBlock = `Request: ${ctx.request.title}
+${ctx.request.description}
+
+Acceptance criteria:
+${brd.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+
+Plan:
+${plan.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`;
+
+  // Step 1: pick the real files to read (planner guesses are only a hint).
+  const pick = await completeJson({
+    system: PICK_SYSTEM,
+    user: `${requestBlock}
+
+Planner's guesses (may be wrong): ${plan.files.join(", ") || "(none)"}
+
+Repository file list:
+${treeList.join("\n")}
+
+Return the files to read as JSON.`,
+    maxTokens: 400,
+  });
+  let chosen = (Array.isArray(pick.files) ? pick.files.map(String) : [])
+    .filter((p) => sourceFiles.includes(p))
     .slice(0, MAX_CONTEXT_FILES);
+  if (chosen.length === 0) {
+    chosen = plan.files.filter((p) => sourceFiles.includes(p)).slice(0, MAX_CONTEXT_FILES);
+  }
+
   const context: { path: string; contents: string }[] = [];
-  for (const path of candidates) {
+  for (const path of chosen) {
     const file = await getFile(client, path, base);
     if (file) context.push({ path, contents: file.contents });
   }
@@ -90,37 +140,45 @@ async function realBuild(
     files: context.map((f) => f.path),
   });
 
-  // Ask Claude for concrete changes.
-  const userPrompt = `Request: ${ctx.request.title}
-${ctx.request.description}
+  // Step 2: generate the concrete changes, grounded in tree + real contents.
+  const json = await completeJson({
+    system: BUILD_SYSTEM,
+    user: `${requestBlock}
 
-Acceptance criteria:
-${brd.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+Repository file list:
+${treeList.join("\n")}
 
-Plan:
-${plan.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
-
-Current contents of likely-relevant files${context.length ? ":" : " — none were found in the repo."}
+Current contents of the relevant files${context.length ? ":" : " — none could be read; be conservative."}
 ${context.map((f) => `\n=== ${f.path} ===\n${f.contents}`).join("\n")}
 
-Return the file changes as JSON.`;
+Return the file changes as JSON.`,
+    maxTokens: 4000,
+  });
 
-  const json = await completeJson({ system: SYSTEM, user: userPrompt, maxTokens: 4000 });
-  const files = Array.isArray(json.files)
+  const proposed = Array.isArray(json.files)
     ? (json.files as unknown[])
         .map((f) => f as { path?: unknown; contents?: unknown })
         .filter((f) => typeof f.path === "string" && typeof f.contents === "string")
         .map((f) => ({ path: String(f.path), contents: String(f.contents) }))
-        .filter((f) => !/[()]|\.\.\./.test(f.path)) // never commit placeholder paths
+        .filter((f) => !/[()]|\.\.\.|\s/.test(f.path))
         .slice(0, MAX_CHANGED_FILES)
     : [];
+  if (proposed.length === 0) throw new Error("Model proposed no file changes");
 
-  if (files.length === 0) {
-    throw new Error("Model proposed no file changes");
+  // Validate against the real tree; new files are allowed but called out.
+  const newFiles = proposed.filter((f) => !sourceFiles.includes(f.path)).map((f) => f.path);
+  if (newFiles.length > 0) {
+    await ctx.log(`Builder is creating ${newFiles.length} NEW file(s).`, { newFiles });
+  }
+  if (newFiles.length === proposed.length && context.length > 0) {
+    // Everything "new" while real files were readable smells like hallucinated
+    // paths — refuse rather than commit junk.
+    throw new Error(
+      `All proposed paths are new despite existing context (${newFiles.join(", ")}) — likely ungrounded`
+    );
   }
 
-  // Commit each file to the branch.
-  for (const f of files) {
+  for (const f of proposed) {
     const existing = await getFile(client, f.path, branch);
     await putFile(client, {
       filePath: f.path,
@@ -130,7 +188,7 @@ Return the file changes as JSON.`;
       sha: existing?.sha,
     });
   }
-  const changed = files.map((f) => f.path);
+  const changed = proposed.map((f) => f.path);
   await ctx.log(`Committed ${changed.length} file(s) to ${branch}.`, { files: changed });
 
   const summary = String(json.summary ?? "").trim() || `Implemented "${ctx.request.title}".`;
@@ -142,6 +200,17 @@ Return the file changes as JSON.`;
   ].join("\n");
 
   return { branch, summary, diff, committed: true, filesChanged: changed };
+}
+
+/** Put likely-app code first so a capped list keeps the important paths. */
+function prioritize(paths: string[]): string[] {
+  const score = (p: string) =>
+    p.startsWith("src/") || p.startsWith("app/") || p.startsWith("pages/")
+      ? 0
+      : p.startsWith("lib/") || p.startsWith("components/")
+        ? 1
+        : 2;
+  return [...paths].sort((a, b) => score(a) - score(b) || a.localeCompare(b));
 }
 
 function stubBuild(ctx: AgentContext, branch: string): BuildResult {
