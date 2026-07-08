@@ -63,6 +63,23 @@ export async function ensureBranch(
   }
 }
 
+/**
+ * Point `branch` at `sha`, creating it if needed and force-resetting it if it
+ * already exists. Used at the start of a build so reruns begin from a clean
+ * base instead of stacking on a previous attempt's commits.
+ */
+export async function forceBranch(c: GhClient, branch: string, sha: string): Promise<void> {
+  try {
+    await gh(c, "POST", `/repos/${c.repo}/git/refs`, { ref: `refs/heads/${branch}`, sha });
+  } catch (err) {
+    if (!String(err).includes("Reference already exists")) throw err;
+    await gh(c, "PATCH", `/repos/${c.repo}/git/refs/heads/${encodeURIComponent(branch)}`, {
+      sha,
+      force: true,
+    });
+  }
+}
+
 /** Fetch a file's text + blob sha at a ref, or null if it doesn't exist. */
 export async function getFile(
   c: GhClient,

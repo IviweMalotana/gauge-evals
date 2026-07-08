@@ -1,5 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
+import http from "http";
+import https from "https";
 import type { Browser, Page, Locator } from "playwright-core";
 import { completeJson, getAnthropic } from "../anthropic";
 import { features } from "../env";
@@ -42,17 +44,87 @@ Allowed actions:
 - expectText { "action":"expectText", "target":"Text that should be visible" }
 - expectNoError { "action":"expectNoError" }
 
+CRITICAL: for goto, use ONLY paths from the provided "Known routes" list —
+NEVER invent or guess a path. If the page you need isn't in the list, goto "/"
+and navigate to it by clicking visible links.
+
 Reply with a single JSON object only: { "steps": BrowserStep[] }.
 Start with a goto. Keep it under 10 steps. End with at least one expectText or
 expectNoError that captures the scenario's "Then".`;
 
+/**
+ * Discover the app's REAL routes by fetching its pages and extracting same-site
+ * hrefs (one level deep from "/"). This grounds the step planner so it can't
+ * invent paths like "/sign-in" when the app's route is "/login".
+ */
+export async function discoverRoutes(baseUrl: string): Promise<string[]> {
+  const routes = new Set<string>(["/"]);
+  const html = await fetchHtml(baseUrl).catch(() => "");
+  for (const m of html.matchAll(/href="(\/[^"#?]*)"/g)) {
+    const p = m[1];
+    if (!p.startsWith("/_next") && !p.startsWith("//")) routes.add(p.replace(/\/+$/, "") || "/");
+  }
+  // One level deep: fetch each discovered page for routes not linked from "/".
+  for (const r of [...routes].slice(0, 8)) {
+    if (r === "/") continue;
+    const page = await fetchHtml(`${baseUrl.replace(/\/+$/, "")}${r}`).catch(() => "");
+    for (const m of page.matchAll(/href="(\/[^"#?]*)"/g)) {
+      const p = m[1];
+      if (!p.startsWith("/_next") && !p.startsWith("//")) routes.add(p.replace(/\/+$/, "") || "/");
+    }
+  }
+  return [...routes].slice(0, 30);
+}
+
+/** Minimal GET over node http/https (no fetch — see anthropic.ts for why). */
+function fetchHtml(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const mod = u.protocol === "http:" ? http : https;
+    const req = mod.get(
+      { host: u.hostname, port: u.port || undefined, path: u.pathname || "/", timeout: 10000 },
+      (res: http.IncomingMessage) => {
+        if ((res.statusCode ?? 0) >= 400) {
+          res.resume();
+          return reject(new Error(`HTTP ${res.statusCode}`));
+        }
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (c: string) => (body += c));
+        res.on("end", () => resolve(body));
+        res.on("error", reject);
+      }
+    );
+    req.on("timeout", () => req.destroy(new Error("timeout")));
+    req.on("error", reject);
+  });
+}
+
 async function planSteps(scenario: string, baseUrl: string): Promise<BrowserStep[]> {
+  const routes = await discoverRoutes(baseUrl);
   const json = await completeJson({
     system: PLAN_SYSTEM,
-    user: `Base URL: ${baseUrl}\n\nScenario:\n${scenario}\n\nReturn the steps as JSON.`,
+    user: `Base URL: ${baseUrl}
+
+Known routes in this app (the ONLY valid goto targets):
+${routes.join("\n")}
+
+Scenario:
+${scenario}
+
+Return the steps as JSON.`,
     maxTokens: 900,
   });
   const steps = Array.isArray(json.steps) ? (json.steps as BrowserStep[]) : [];
+  // Enforce grounding: a goto to an unknown path is redirected to "/" so the
+  // scenario navigates by visible links instead of 404ing.
+  const known = new Set(routes);
+  for (const s of steps) {
+    if (s.action === "goto" && s.target && !s.target.startsWith("http")) {
+      const clean = ("/" + s.target.replace(/^\/+/, "")).replace(/\/+$/, "") || "/";
+      if (!known.has(clean)) s.target = "/";
+    }
+  }
   return steps.filter((s) => s && typeof s.action === "string").slice(0, 12);
 }
 
