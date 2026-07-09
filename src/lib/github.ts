@@ -47,6 +47,21 @@ export async function getDefaultBranch(
   return { base, baseSha: ref.object.sha };
 }
 
+/** The head commit sha of a branch, or null if the branch doesn't exist. */
+export async function getBranchSha(c: GhClient, branch: string): Promise<string | null> {
+  try {
+    const ref = await gh<{ object: { sha: string } }>(
+      c,
+      "GET",
+      `/repos/${c.repo}/git/ref/heads/${encodeURIComponent(branch)}`
+    );
+    return ref.object.sha;
+  } catch (err) {
+    if (String(err).includes("→ 404")) return null;
+    throw err;
+  }
+}
+
 /** Create `branch` at `sha` if it doesn't already exist. */
 export async function ensureBranch(
   c: GhClient,

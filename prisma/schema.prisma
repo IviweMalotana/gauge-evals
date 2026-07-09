@@ -97,6 +97,7 @@ model Request {
   brd       Brd?
   plan      Plan?
   build     Build?
+  impact    RequirementImpact?
   checks    VerificationCheck[]
   pullReq   PullRequestRef?
   approvals Approval[]
@@ -104,6 +105,20 @@ model Request {
 
   @@index([companyId])
   @@index([status])
+}
+
+// Per-request impact analysis against the living requirements corpus: which
+// existing requirements this request AFFECTS, and the drafted new/updated
+// Gherkin the pipeline will commit alongside the code (Phase 3).
+model RequirementImpact {
+  id        String   @id @default(cuid())
+  requestId String   @unique
+  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  summary   String   @default("")
+  related   String   @default("[]") // JSON: [{ reqId, title, category, filePath, affected, reason }]
+  drafts    String   @default("[]") // JSON: [{ op, reqId?, category, title, filePath, body, codeAreas }]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // UX-check agent output: classifies bug vs feature and either reproduces the

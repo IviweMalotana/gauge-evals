@@ -110,18 +110,31 @@ const SEED_MAX_TOKENS = 8000;
  * instead of failing the entire seed with a SyntaxError.
  */
 export function extractSpecObjects(text: string): unknown[] {
+  return salvageArray(text, "requirements");
+}
+
+/**
+ * Return the array at top-level `key` from a possibly-TRUNCATED JSON response.
+ *
+ * Strict-parse the whole object first; if that fails (model hit its token
+ * ceiling and the JSON is cut off), scan `"<key>": [ ... ]` and keep every
+ * COMPLETE `{...}` element, dropping only an incomplete trailing one — so a long
+ * response still yields usable objects instead of a SyntaxError. Shared by the
+ * seed (`requirements`) and impact (`related` / `drafts`) agents.
+ */
+export function salvageArray(text: string, key: string): unknown[] {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start !== -1 && end > start) {
     try {
-      const obj = JSON.parse(text.slice(start, end + 1)) as { requirements?: unknown };
-      if (Array.isArray(obj.requirements)) return obj.requirements;
+      const obj = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+      if (Array.isArray(obj[key])) return obj[key] as unknown[];
     } catch {
       // fall through to salvage
     }
   }
 
-  const keyMatch = text.search(/"requirements"\s*:\s*\[/);
+  const keyMatch = text.search(new RegExp(`"${key}"\\s*:\\s*\\[`));
   if (keyMatch === -1) return [];
   const arrStart = text.indexOf("[", keyMatch);
   if (arrStart === -1) return [];
@@ -154,7 +167,7 @@ export function extractSpecObjects(text: string): unknown[] {
         objStart = -1;
       }
     } else if (ch === "]" && depth === 0) {
-      break; // end of the requirements array
+      break; // end of this array
     }
   }
   return objs;

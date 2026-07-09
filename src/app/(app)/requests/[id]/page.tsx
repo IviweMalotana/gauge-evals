@@ -19,6 +19,16 @@ function parseArray(json: string | null | undefined): string[] {
   }
 }
 
+function parseObjects(json: string | null | undefined): Record<string, unknown>[] {
+  if (!json) return [];
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? (v as Record<string, unknown>[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default async function RequestDetail({
   params,
 }: {
@@ -31,6 +41,7 @@ export default async function RequestDetail({
       createdBy: { select: { name: true, email: true } },
       uxCheck: true,
       brd: true,
+      impact: true,
       plan: true,
       build: true,
       checks: true,
@@ -173,6 +184,70 @@ export default async function RequestDetail({
           )}
         </div>
       )}
+
+      {/* Impact on the requirements corpus */}
+      {request.impact && (() => {
+        const related = parseObjects(request.impact.related) as {
+          reqId: string;
+          title: string;
+          category: string;
+          filePath: string;
+          affected: boolean;
+          reason: string;
+        }[];
+        const drafts = parseObjects(request.impact.drafts) as {
+          op: string;
+          reqId: string;
+          category: string;
+          title: string;
+          filePath: string;
+          body: string;
+        }[];
+        if (related.length === 0 && drafts.length === 0 && !request.impact.summary) return null;
+        return (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>Impact on requirements</h3>
+            {request.impact.summary && <p>{request.impact.summary}</p>}
+
+            {related.length > 0 && (
+              <>
+                <h4>Related requirements</h4>
+                <ul className="small">
+                  {related.map((r) => (
+                    <li key={r.reqId}>
+                      <span className={`badge ${r.affected ? "bug" : ""}`}>
+                        {r.affected ? "AFFECTED" : "related"}
+                      </span>{" "}
+                      <span className="mono">{r.reqId}</span> [{r.category}] {r.title}
+                      {r.reason ? <span className="muted"> — {r.reason}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {drafts.length > 0 && (
+              <>
+                <h4>Drafted requirement changes</h4>
+                <p className="small muted">
+                  Committed to the build branch alongside the code when this is approved.
+                </p>
+                {drafts.map((d) => (
+                  <details key={d.filePath} style={{ marginBottom: 8 }}>
+                    <summary>
+                      <span className={`badge ${d.op === "new" ? "feature" : "status"}`}>
+                        {d.op === "new" ? "NEW" : "UPDATE"}
+                      </span>{" "}
+                      <span className="mono">{d.filePath}</span> — {d.title}
+                    </summary>
+                    <pre>{`Feature: ${d.title}\n\n${d.body}`}</pre>
+                  </details>
+                ))}
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Human gate */}
       {request.status === "AWAITING_APPROVAL" && request.brd && (
