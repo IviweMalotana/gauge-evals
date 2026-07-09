@@ -109,6 +109,7 @@ function tagSafe(s: string): string {
   return s.trim().replace(/\s+/g, "_");
 }
 
-function inline(s: string): string {
+/** Collapse a string to a single trimmed line (Gherkin steps/titles are one line). */
+export function inline(s: string): string {
   return s.replace(/[\r\n]+/g, " ").trim();
 }

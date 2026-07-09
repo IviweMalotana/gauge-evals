@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { runAfterApproval, runToApproval } from "./agents/orchestrator";
+import { seedRequirementsForCompany } from "./requirements/seed";
 
 /**
  * Minimal durable job queue with an in-process worker.
@@ -13,12 +14,18 @@ import { runAfterApproval, runToApproval } from "./agents/orchestrator";
  * change.
  */
 
-export type JobKind = "to_approval" | "after_approval";
+export type JobKind = "to_approval" | "after_approval" | "seed_requirements";
 
 const g = globalThis as unknown as { gaugeWorkerStarted?: boolean };
 
 export async function enqueue(kind: JobKind, requestId: string): Promise<void> {
   await db.job.create({ data: { kind, requestId, status: "queued" } });
+  ensureWorker();
+}
+
+/** Enqueue a company-scoped job (no request), e.g. seeding the requirements corpus. */
+export async function enqueueCompanyJob(kind: JobKind, companyId: string): Promise<void> {
+  await db.job.create({ data: { kind, companyId, status: "queued" } });
   ensureWorker();
 }
 
@@ -53,9 +60,11 @@ async function loop(): Promise<void> {
       continue;
     }
     try {
+      let result: string | undefined;
       if (job.kind === "to_approval") await runToApproval(job.requestId);
       else if (job.kind === "after_approval") await runAfterApproval(job.requestId);
-      await db.job.update({ where: { id: job.id }, data: { status: "done" } });
+      else if (job.kind === "seed_requirements") result = await runSeedJob(job.companyId);
+      await db.job.update({ where: { id: job.id }, data: { status: "done", result } });
     } catch (err) {
       await db.job.update({
         where: { id: job.id },
@@ -63,6 +72,19 @@ async function loop(): Promise<void> {
       });
     }
   }
+}
+
+/** Run the requirements-seed job for a company; returns a JSON result summary. */
+async function runSeedJob(companyId: string | null): Promise<string> {
+  if (!companyId) throw new Error("seed_requirements job has no companyId");
+  const company = await db.company.findUnique({ where: { id: companyId } });
+  const token = company?.githubAccessToken;
+  const repo = company?.githubDefaultRepo;
+  if (!company || !token || !repo) {
+    throw new Error("Company is missing a connected GitHub repo/token");
+  }
+  const res = await seedRequirementsForCompany({ companyId, repo, token });
+  return JSON.stringify(res);
 }
 
 /** Atomically claim the oldest queued job (best-effort for one instance). */

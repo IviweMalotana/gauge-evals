@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/guards";
 import { can } from "@/lib/auth";
+import { features } from "@/lib/env";
+import { enqueueCompanyJob } from "@/lib/queue";
 
 export async function setDefaultRepo(formData: FormData): Promise<void> {
   const user = await requireUser();
@@ -39,6 +41,27 @@ export async function setPreviewTemplate(formData: FormData): Promise<void> {
     where: { id: user.companyId },
     data: { previewUrlTemplate: valid },
   });
+  revalidatePath("/settings");
+}
+
+/**
+ * Kick off seeding the living requirements corpus for the connected repo. Runs
+ * in the background (reads the codebase, generates Gherkin, opens a PR). No-op
+ * if a seed job is already queued/running so a double-click can't double-seed.
+ */
+export async function seedRequirements(): Promise<void> {
+  const user = await requireUser();
+  if (!can.manageCompany(user.role)) return;
+  const company = await db.company.findUnique({ where: { id: user.companyId } });
+  if (!company?.githubConnected || !company.githubAccessToken || !company.githubDefaultRepo) return;
+  if (!features.anthropic) return;
+
+  const inFlight = await db.job.findFirst({
+    where: { companyId: user.companyId, kind: "seed_requirements", status: { in: ["queued", "running"] } },
+  });
+  if (inFlight) return;
+
+  await enqueueCompanyJob("seed_requirements", user.companyId);
   revalidatePath("/settings");
 }
 

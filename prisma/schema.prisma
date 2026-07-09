@@ -228,15 +228,18 @@ model RequirementDoc {
 // queued work survives a restart.
 model Job {
   id        String   @id @default(cuid())
-  requestId String
-  kind      String // "to_approval" | "after_approval"
+  requestId String   @default("") // the request this job runs for ("" for company-scoped jobs)
+  companyId String? // set for company-scoped jobs (e.g. seed_requirements)
+  kind      String // "to_approval" | "after_approval" | "seed_requirements"
   status    String   @default("queued") // queued | running | done | error
   attempts  Int      @default(0)
   error     String?
+  result    String? // optional JSON summary of the outcome (e.g. seeded PR)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status])
+  @@index([companyId, kind])
 }
 
 // Append-only audit trail of everything the pipeline does.
