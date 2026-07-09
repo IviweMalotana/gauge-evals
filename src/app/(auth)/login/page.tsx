@@ -23,6 +23,9 @@ export default function LoginPage() {
         <p className="small">Welcome back.</p>
       </div>
       <div className="card">
+        <p className="muted" style={{ marginTop: 0, marginBottom: 20, fontSize: 15 }}>
+          Welcome back
+        </p>
         <form action={action}>
           <label htmlFor="email">Email</label>
           <input id="email" name="email" type="email" placeholder="ada@acme.com" required />
