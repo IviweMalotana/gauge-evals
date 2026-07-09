@@ -169,6 +169,54 @@ export async function listDir(
   }
 }
 
+/**
+ * Create ONE commit on `branch` containing all of `files`, based on `baseSha`.
+ * Uses the Git Data API (blobs → tree → commit → ref) so a whole corpus lands
+ * as a single clean commit instead of one commit per file. Creates the branch
+ * if missing, else force-updates it to the new commit. Returns the commit sha.
+ */
+export async function commitFiles(
+  c: GhClient,
+  args: { branch: string; baseSha: string; message: string; files: { path: string; contents: string }[] }
+): Promise<string> {
+  const baseCommit = await gh<{ tree: { sha: string } }>(
+    c,
+    "GET",
+    `/repos/${c.repo}/git/commits/${args.baseSha}`
+  );
+  const tree = await Promise.all(
+    args.files.map(async (f) => {
+      const blob = await gh<{ sha: string }>(c, "POST", `/repos/${c.repo}/git/blobs`, {
+        content: Buffer.from(f.contents, "utf8").toString("base64"),
+        encoding: "base64",
+      });
+      return { path: f.path, mode: "100644" as const, type: "blob" as const, sha: blob.sha };
+    })
+  );
+  const newTree = await gh<{ sha: string }>(c, "POST", `/repos/${c.repo}/git/trees`, {
+    base_tree: baseCommit.tree.sha,
+    tree,
+  });
+  const commit = await gh<{ sha: string }>(c, "POST", `/repos/${c.repo}/git/commits`, {
+    message: args.message,
+    tree: newTree.sha,
+    parents: [args.baseSha],
+  });
+  try {
+    await gh(c, "POST", `/repos/${c.repo}/git/refs`, {
+      ref: `refs/heads/${args.branch}`,
+      sha: commit.sha,
+    });
+  } catch (err) {
+    if (!String(err).includes("Reference already exists")) throw err;
+    await gh(c, "PATCH", `/repos/${c.repo}/git/refs/heads/${encodeURIComponent(args.branch)}`, {
+      sha: commit.sha,
+      force: true,
+    });
+  }
+  return commit.sha;
+}
+
 /** Create or update a file on a branch. */
 export async function putFile(
   c: GhClient,

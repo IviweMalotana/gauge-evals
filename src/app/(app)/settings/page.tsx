@@ -2,14 +2,25 @@ import { requireUser } from "@/lib/guards";
 import { db } from "@/lib/db";
 import { can } from "@/lib/auth";
 import { features } from "@/lib/env";
+import { APP_NAME } from "@/lib/brand";
 import {
   disconnectGithub,
+  seedRequirements,
   setAppUrl,
   setDefaultRepo,
   setPreviewTemplate,
 } from "@/app/actions/settings";
 
 export const dynamic = "force-dynamic";
+
+function parseSeedResult(json: string | null): { count?: number; prNumber?: number | null; prUrl?: string | null } {
+  if (!json) return {};
+  try {
+    return JSON.parse(json);
+  } catch {
+    return {};
+  }
+}
 
 export default async function SettingsPage({
   searchParams,
@@ -19,6 +30,19 @@ export default async function SettingsPage({
   const user = await requireUser();
   const manage = can.manageCompany(user.role);
   const company = await db.company.findUnique({ where: { id: user.companyId } });
+
+  const canSeed = Boolean(
+    company?.githubConnected && company.githubDefaultRepo && features.anthropic
+  );
+  const [reqCount, lastSeed] = await Promise.all([
+    db.requirementDoc.count({ where: { companyId: user.companyId } }),
+    db.job.findFirst({
+      where: { companyId: user.companyId, kind: "seed_requirements" },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+  const seedResult = parseSeedResult(lastSeed?.result ?? null);
+  const seeding = lastSeed?.status === "queued" || lastSeed?.status === "running";
 
   return (
     <div>
@@ -161,6 +185,64 @@ export default async function SettingsPage({
               "Not set."
             )}
           </p>
+        )}
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Requirements corpus</h3>
+        <p className="small muted">
+          The living requirements — this repository's behaviour documented as
+          version-controlled Cucumber/Gherkin <span className="mono">.feature</span>{" "}
+          files (Feature / Scenario / Given-When-Then), the source of truth{" "}
+          {APP_NAME} uses for search and per-request impact analysis. Seeding
+          reads your codebase, generates a baseline corpus, and opens a PR.
+        </p>
+        <p className="small">
+          Indexed requirements: <strong>{reqCount}</strong>
+          {lastSeed && (
+            <>
+              {" · "}last seed:{" "}
+              <span className="mono">{lastSeed.status}</span>
+              {lastSeed.status === "done" && seedResult.count != null && (
+                <>
+                  {" "}({seedResult.count} generated
+                  {seedResult.prUrl ? (
+                    <>
+                      {", "}
+                      <a href={seedResult.prUrl} target="_blank" rel="noreferrer">
+                        PR{seedResult.prNumber ? ` #${seedResult.prNumber}` : ""}
+                      </a>
+                    </>
+                  ) : null}
+                  )
+                </>
+              )}
+              {lastSeed.status === "error" && lastSeed.error && (
+                <span className="muted"> — {lastSeed.error}</span>
+              )}
+            </>
+          )}
+        </p>
+
+        {manage ? (
+          canSeed ? (
+            <form action={seedRequirements}>
+              <button className="btn secondary" type="submit" disabled={seeding}>
+                {seeding
+                  ? "Seeding… (a PR will open on your repo)"
+                  : reqCount > 0
+                    ? "Re-seed requirements corpus"
+                    : "Seed requirements corpus"}
+              </button>
+            </form>
+          ) : (
+            <p className="small muted">
+              Connect GitHub, set a default repo, and configure{" "}
+              <span className="mono">ANTHROPIC_API_KEY</span> to enable seeding.
+            </p>
+          )
+        ) : (
+          <p className="small muted">Ask an owner or admin to seed the corpus.</p>
         )}
       </div>
 
