@@ -3,8 +3,12 @@ import { decryptSecret } from "../crypto";
 import type { Request } from "@prisma/client";
 import type { RequestStatus } from "../domain";
 import type { AgentContext } from "./types";
+import { APP_NAME } from "../brand";
+import { commitFiles, getBranchSha, type GhClient } from "../github";
+import { syncRequirementIndex } from "../requirements/store";
 import { runUxCheck } from "./uxCheck";
 import { runBrd } from "./brd";
+import { runImpactAnalysis, saveImpact, loadImpactDrafts, draftToFile } from "./impact";
 import { runPlanner } from "./planner";
 import { runBuilder } from "./builder";
 import { runAcceptance, runBugFix, runRegression } from "./tester";
@@ -126,6 +130,21 @@ export async function runToApproval(requestId: string): Promise<void> {
       },
     });
 
+    // --- Impact analysis (best-effort; never blocks the approval gate) ---
+    await logEvent(requestId, "impact", "Analyzing impact on the requirements corpus.");
+    try {
+      const impact = await runImpactAnalysis(ctx, brd);
+      if (impact) await saveImpact(requestId, impact);
+    } catch (err) {
+      await logEvent(
+        requestId,
+        "impact",
+        `Impact analysis skipped: ${(err as Error).message}`,
+        undefined,
+        "warn"
+      );
+    }
+
     await setStatus(requestId, "AWAITING_APPROVAL");
     await logEvent(requestId, "approval", "BRD ready — awaiting human decision.");
   } catch (err) {
@@ -177,6 +196,12 @@ export async function runAfterApproval(requestId: string): Promise<void> {
       update: { branch: build.branch, summary: build.summary, diff: build.diff },
     });
 
+    // --- Commit approved requirement changes onto the SAME branch, so the PR
+    //     carries code + updated Gherkin together (Phase 3). ---
+    if (ctx.githubToken && ctx.repo && build.committed) {
+      await commitRequirementDrafts(request, ctx, build.branch);
+    }
+
     // --- Verification: acceptance → bug-fix review → regression ---
     // Each is its own stage. Any failing check stops before the PR.
     // Resolve the URL to test against once — a per-branch preview if the company
@@ -226,6 +251,59 @@ export async function runAfterApproval(requestId: string): Promise<void> {
     await logEvent(requestId, "pr", "Pull request created — pipeline complete.", { url: pr.url });
   } catch (err) {
     await failRequest(requestId, err);
+  }
+}
+
+/**
+ * Materialize the request's approved requirement drafts as `.feature` files and
+ * commit them onto the build branch, then re-sync the index from that branch so
+ * search/impact see the updated corpus. Best-effort — a failure here logs but
+ * doesn't sink the pipeline (the code change still ships).
+ */
+async function commitRequirementDrafts(
+  request: Request,
+  ctx: AgentContext,
+  branch: string
+): Promise<void> {
+  try {
+    const drafts = await loadImpactDrafts(request.id);
+    if (drafts.length === 0) return;
+    const client: GhClient = { token: ctx.githubToken!, repo: ctx.repo! };
+    const head = await getBranchSha(client, branch);
+    if (!head) return;
+
+    const files = drafts.map(draftToFile);
+    await commitFiles(client, {
+      branch,
+      baseSha: head,
+      message: `${APP_NAME}: update requirements corpus (${files.length} feature file(s))`,
+      files,
+    });
+    await logEvent(
+      request.id,
+      "requirements",
+      `Committed ${files.length} requirement change(s) to ${branch}.`,
+      { files: files.map((f) => f.path) }
+    );
+
+    try {
+      await syncRequirementIndex({
+        companyId: request.companyId,
+        repo: ctx.repo!,
+        client,
+        ref: branch,
+      });
+    } catch {
+      // index re-sync is non-critical here; it also runs on corpus reseed
+    }
+  } catch (err) {
+    await logEvent(
+      request.id,
+      "requirements",
+      `Could not commit requirement changes: ${(err as Error).message}`,
+      undefined,
+      "warn"
+    );
   }
 }
 
