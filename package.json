@@ -12,7 +12,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
     "seed": "tsx prisma/seed.ts",
-    "setup": "prisma db push && tsx prisma/seed.ts"
+    "setup": "prisma db push && tsx prisma/seed.ts",
+    "test": "tsx scripts/test-acceptance-review.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.1",
