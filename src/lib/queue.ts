@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { runAfterApproval, runToApproval } from "./agents/orchestrator";
 import { seedRequirementsForCompany } from "./requirements/seed";
+import { decryptSecret } from "./crypto";
 
 /**
  * Minimal durable job queue with an in-process worker.
@@ -78,7 +79,10 @@ async function loop(): Promise<void> {
 async function runSeedJob(companyId: string | null): Promise<string> {
   if (!companyId) throw new Error("seed_requirements job has no companyId");
   const company = await db.company.findUnique({ where: { id: companyId } });
-  const token = company?.githubAccessToken;
+  // The token is stored ENCRYPTED at rest (see crypto.ts); decrypt it before
+  // use, exactly like the orchestrator does — passing the ciphertext straight
+  // to GitHub yields a 401 "Bad credentials".
+  const token = decryptSecret(company?.githubAccessToken);
   const repo = company?.githubDefaultRepo;
   if (!company || !token || !repo) {
     throw new Error("Company is missing a connected GitHub repo/token");
