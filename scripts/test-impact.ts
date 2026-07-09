@@ -37,6 +37,7 @@ const candidates = [
     category: "api",
     filePath: "requirements/api/REQ-01423cff.feature",
     body: "  Scenario: Redirect\n    Given a user\n    When they connect\n    Then redirected",
+    codeAreas: ["src/app/api/oauth/github/start/route.ts"],
   },
   {
     reqId: "REQ-52a472ba",
@@ -44,8 +45,16 @@ const candidates = [
     category: "ux",
     filePath: "requirements/ux/REQ-52a472ba.feature",
     body: "  Scenario: Shows form\n    Then the form is visible",
+    codeAreas: ["src/app/(auth)/login/page.tsx"],
   },
 ];
+
+// The real repo tree — hallucinated paths must be dropped against this.
+const realPaths = new Set<string>([
+  "src/app/(auth)/login/page.tsx",
+  "src/app/api/oauth/github/start/route.ts",
+  "prisma/schema.prisma",
+]);
 
 function main() {
   console.log("impact analysis — pure logic\n");
@@ -78,14 +87,15 @@ function main() {
       op: "new",
       category: "ux",
       title: "Brand name appears on auth pages",
-      codeAreas: ["src/app/(auth)/login/page.tsx"],
+      // one real path + one hallucinated path that must be dropped
+      codeAreas: ["src/app/(auth)/login/page.tsx", "app/views/auth/signin.html"],
       scenarios: [{ name: "Brand", given: [], when: [], then: ["the product name is shown"] }],
     },
     { op: "update", reqId: "REQ-unknown", title: "bad", scenarios: [{ name: "x", then: ["y"] }] }, // dropped: unknown id
     { op: "new", category: "ux", title: "", scenarios: [] }, // dropped: no title/scenarios
   ];
 
-  const result = parseImpactResponse(related, drafts, candidates, "One requirement updated, one added.");
+  const result = parseImpactResponse(related, drafts, candidates, "One requirement updated, one added.", realPaths);
   check("summary passed through", result.summary === "One requirement updated, one added.");
   check("related resolves known ids only (2 of 3)", result.related.length === 2, `${result.related.length}`);
   check(
@@ -101,6 +111,15 @@ function main() {
   const created = result.drafts.find((d) => d.op === "new")!;
   check("new gets fresh REQ id", /^REQ-[0-9a-f]{8}$/.test(created.reqId), created.reqId);
   check("new path is requirements/<category>/<id>.feature", created.filePath === `requirements/ux/${created.reqId}.feature`);
+  check(
+    "hallucinated @code path is dropped, real one kept",
+    created.codeAreas.length === 1 && created.codeAreas[0] === "src/app/(auth)/login/page.tsx",
+    JSON.stringify(created.codeAreas)
+  );
+  check(
+    "update unions the candidate's existing real @code paths",
+    upd.codeAreas.includes("src/app/(auth)/login/page.tsx")
+  );
 
   console.log("\ndraftToFile → valid Gherkin");
   const file = draftToFile(upd);

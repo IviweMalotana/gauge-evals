@@ -1,7 +1,7 @@
 import { completeText, getAnthropic } from "../anthropic";
 import { features } from "../env";
 import { db } from "../db";
-import type { GhClient } from "../github";
+import { getDefaultBranch, getTree, type GhClient } from "../github";
 import {
   newRequirementId,
   requirementPath,
@@ -94,9 +94,20 @@ interface CandidateReq {
   category: string;
   filePath: string;
   body: string;
+  codeAreas: string[]; // the requirement's existing (already-grounded) @code paths
 }
 
 const MAX_CANDIDATES = 12;
+
+/** Parse a RequirementDoc's codeAreas JSON column into a string[]. */
+function parseCodeAreas(json: string): string[] {
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v.map(String) : [];
+  } catch {
+    return [];
+  }
+}
 
 /** Build the retrieval query from the request + BRD. Pure. */
 export function impactQuery(request: { title: string; description: string }, brd: BrdResult): string {
@@ -112,9 +123,15 @@ export function parseImpactResponse(
   related: unknown[],
   drafts: unknown[],
   candidates: CandidateReq[],
-  summary: string
+  summary: string,
+  realPaths?: Set<string>
 ): ImpactResult {
   const byId = new Map(candidates.map((c) => [c.reqId, c]));
+  // Ground code paths against the real repo tree when we have it — drop
+  // hallucinated paths (e.g. "app/views/auth/signin.html") the same way the
+  // seed agent does, rather than committing generic-looking tags.
+  const groundPaths = (paths: string[]) =>
+    realPaths ? paths.filter((p) => realPaths.has(p)) : paths;
 
   const relatedOut: RelatedRequirement[] = [];
   for (const r of related) {
@@ -161,7 +178,7 @@ export function parseImpactResponse(
       : [];
     if (scenarios.length === 0) continue;
 
-    const codeAreas = Array.isArray(o.codeAreas) ? o.codeAreas.map(String) : [];
+    const codeAreas = groundPaths(Array.isArray(o.codeAreas) ? o.codeAreas.map(String) : []);
 
     if (op === "update") {
       const cand = typeof o.reqId === "string" ? byId.get(o.reqId) : undefined;
@@ -169,14 +186,17 @@ export function parseImpactResponse(
       const category = (REQUIREMENT_CATEGORIES as readonly string[]).includes(cand.category)
         ? (cand.category as RequirementCategory)
         : "backend";
+      // Keep the requirement's existing real @code paths so an update never
+      // strips grounding just because the model didn't restate them.
+      const mergedAreas = Array.from(new Set([...codeAreas, ...cand.codeAreas]));
       draftsOut.push({
         op: "update",
         reqId: cand.reqId,
         category,
         title,
         filePath: cand.filePath,
-        body: buildRequirementBody({ category, title, narrative: o.narrative, codeAreas, scenarios }),
-        codeAreas,
+        body: buildRequirementBody({ category, title, narrative: o.narrative, codeAreas: mergedAreas, scenarios }),
+        codeAreas: mergedAreas,
       });
     } else {
       const category = (REQUIREMENT_CATEGORIES as readonly string[]).includes(o.category as string)
@@ -237,10 +257,26 @@ export async function runImpactAnalysis(
     category: r.category,
     filePath: r.filePath,
     body: r.body,
+    codeAreas: parseCodeAreas(r.codeAreas),
   }));
   await ctx.log(`Analyzing impact against ${candidates.length} related requirement(s).`, {
     reqIds: candidates.map((c) => c.reqId),
   });
+
+  // Ground code paths in the REAL repo tree so drafted @code tags can't be
+  // hallucinated. Best-effort — if the tree can't be read, we skip filtering.
+  const client: GhClient = { token: ctx.githubToken!, repo: ctx.repo! };
+  let realPaths: Set<string> | undefined;
+  let fileList: string[] = [];
+  try {
+    const { base } = await getDefaultBranch(client);
+    const { entries } = await getTree(client, base);
+    const blobs = entries.filter((e) => e.type === "blob").map((e) => e.path);
+    realPaths = new Set(blobs);
+    fileList = blobs.filter((p) => /^(src|app|pages|lib|prisma)\//.test(p)).slice(0, 200);
+  } catch {
+    realPaths = undefined;
+  }
 
   const text = await completeText({
     system: IMPACT_SYSTEM,
@@ -259,7 +295,11 @@ ${candidates
     (c) => `--- ${c.reqId} [${c.category}] ${c.title} (${c.filePath})\n${c.body}`
   )
   .join("\n\n")}
-
+${
+  fileList.length
+    ? `\nReal repository files — codeAreas MUST be chosen only from this list:\n${fileList.join("\n")}\n`
+    : ""
+}
 Return the impact JSON.`,
     maxTokens: 4000,
   });
@@ -276,7 +316,7 @@ Return the impact JSON.`,
     // summary is optional
   }
 
-  const result = parseImpactResponse(related, drafts, candidates, summary);
+  const result = parseImpactResponse(related, drafts, candidates, summary, realPaths);
   const affected = result.related.filter((r) => r.affected).length;
   await ctx.log(
     `Impact: ${affected} affected requirement(s), ${result.drafts.length} drafted change(s).`
