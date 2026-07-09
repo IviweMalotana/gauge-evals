@@ -1,4 +1,4 @@
-import { completeJson, getAnthropic } from "../anthropic";
+import { completeText, getAnthropic } from "../anthropic";
 import { features } from "../env";
 import { APP_NAME, BRANCH_PREFIX } from "../brand";
 import {
@@ -96,6 +96,69 @@ const MAX_TREE_PATHS = 300;
 const MAX_SAMPLE_FILES = 12;
 const MAX_FILE_CHARS = 2500;
 const MAX_REQUIREMENTS = 20;
+// A whole-codebase corpus is large; give the model room so its JSON isn't
+// truncated mid-array (the salvage parser below is the belt to this suspenders).
+const SEED_MAX_TOKENS = 8000;
+
+/**
+ * Extract the `requirements` array from a model response that may be TRUNCATED.
+ *
+ * First tries a strict parse of the whole object. If that fails (the model hit
+ * its token ceiling and the JSON is cut off mid-array), it scans the
+ * `requirements` array and keeps every COMPLETE `{...}` element, dropping only
+ * the incomplete trailing one — so a long response still yields usable specs
+ * instead of failing the entire seed with a SyntaxError.
+ */
+export function extractSpecObjects(text: string): unknown[] {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    try {
+      const obj = JSON.parse(text.slice(start, end + 1)) as { requirements?: unknown };
+      if (Array.isArray(obj.requirements)) return obj.requirements;
+    } catch {
+      // fall through to salvage
+    }
+  }
+
+  const keyMatch = text.search(/"requirements"\s*:\s*\[/);
+  if (keyMatch === -1) return [];
+  const arrStart = text.indexOf("[", keyMatch);
+  if (arrStart === -1) return [];
+
+  const objs: unknown[] = [];
+  let inStr = false;
+  let esc = false;
+  let depth = 0;
+  let objStart = -1;
+  for (let i = arrStart + 1; i < text.length; i++) {
+    const ch = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        try {
+          objs.push(JSON.parse(text.slice(objStart, i + 1)));
+        } catch {
+          // skip a malformed element
+        }
+        objStart = -1;
+      }
+    } else if (ch === "]" && depth === 0) {
+      break; // end of the requirements array
+    }
+  }
+  return objs;
+}
 
 const SOURCE_EXT = /\.(tsx?|jsx?|mjs|cjs|css|scss|html|json|prisma|md|py|rb|go|rs|java|vue|svelte)$/i;
 const EXCLUDED = /^(node_modules|\.next|dist|build|coverage|public\/artifacts|requirements)\/|package-lock\.json$/;
@@ -259,7 +322,7 @@ export async function seedRequirementsForCompany(args: {
   }
   log(`Sampled ${sample.length} file(s) for context.`);
 
-  const json = await completeJson({
+  const text = await completeText({
     system: SEED_SYSTEM,
     user: `Repository: ${args.repo}
 
@@ -270,10 +333,10 @@ Sample file contents:
 ${sample.map((f) => `\n=== ${f.path} ===\n${f.contents}`).join("\n")}
 
 Describe the current behaviour as a baseline Gherkin requirements corpus. Return JSON.`,
-    maxTokens: 4000,
+    maxTokens: SEED_MAX_TOKENS,
   });
 
-  const specs = sanitizeSpecs(json.requirements, realPaths);
+  const specs = sanitizeSpecs(extractSpecObjects(text), realPaths);
   if (specs.length === 0) throw new Error("Model produced no usable requirements");
 
   const featuresOut = specs.map(specToRequirement);

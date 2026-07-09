@@ -12,6 +12,7 @@
 
 import {
   buildRequirementBody,
+  extractSpecObjects,
   sanitizeSpecs,
   specToRequirement,
   type SeedRequirementSpec,
@@ -63,7 +64,23 @@ const modelOutput = [
 function main() {
   console.log("requirements seed — pure assembly\n");
 
-  console.log("sanitizeSpecs");
+  console.log("extractSpecObjects");
+  // Clean, well-formed response → all elements.
+  const clean = JSON.stringify({ requirements: modelOutput });
+  check("clean response yields all elements", extractSpecObjects(clean).length === modelOutput.length);
+  // TRUNCATED response (the real bug): cut off mid-way through the 3rd object.
+  const full = JSON.stringify({ requirements: modelOutput }, null, 2);
+  const truncated = full.slice(0, full.indexOf('"bad category"') + 5); // hard cut, invalid JSON
+  const salvaged = extractSpecObjects(truncated);
+  check("truncated response still parses (does not throw)", Array.isArray(salvaged));
+  check(
+    "salvages the complete leading elements, drops the cut-off tail",
+    salvaged.length === 2,
+    `got ${salvaged.length}`
+  );
+  check("no JSON key found → empty array, no throw", extractSpecObjects("not json at all").length === 0);
+
+  console.log("\nsanitizeSpecs");
   const specs = sanitizeSpecs(modelOutput, realPaths);
   check("keeps only the well-formed specs", specs.length === 2, `got ${specs.length}`);
   check(
