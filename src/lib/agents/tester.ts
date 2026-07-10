@@ -103,12 +103,24 @@ You are given the unified diff of the change (lines starting with "-" were
 removed, "+" were added). Base your judgment ONLY on the diff, and read it
 literally — an added "+" line IS present in the new code.
 
-For each criterion, decide if the diff satisfies it, and in "note" QUOTE the
-specific "+"/"-" diff line that supports your verdict. Do not claim a change is
-absent if a matching "+" line exists in the diff.
+For each criterion, assign a "verdict":
+- "pass": the diff clearly satisfies it. QUOTE the specific "+"/"-" diff line
+  that supports this in "note".
+- "fail": the diff CONTRADICTS the criterion, or omits a required code change
+  that the diff itself would have to contain. This is the only verdict that
+  blocks the change.
+- "unverifiable": judging the criterion requires something a code diff cannot
+  show — the RENDERED result, visual appearance, layout, typography/styling
+  consistency with OTHER files, runtime behavior, or non-interference with
+  sibling elements at runtime. There is no live preview to render against.
+
+CRITICAL: Do NOT mark a criterion "fail" merely because you cannot see the
+rendered page or other files. If you lack the means to verify it from the diff,
+it is "unverifiable" (informational, non-blocking) — never "fail". Reserve
+"fail" for a concrete contradiction or a genuinely missing code change.
 
 Reply with a single JSON object only:
-{ "summary": string, "passed": boolean, "results": [ { "criterion": string, "passed": boolean, "note": string } ] }`;
+{ "summary": string, "results": [ { "criterion": string, "verdict": "pass" | "fail" | "unverifiable", "note": string } ] }`;
 
 /**
  * Injectable dependencies for {@link codeAcceptanceReview}. Real code uses the
@@ -161,27 +173,58 @@ export function buildReviewPrompt(
     .join("\n")}\n\nUnified diff of the change:\n${diffText}${contentBlock}\n\nJudge each criterion against the diff and return JSON.`;
 }
 
-/** Turn the reviewer's raw JSON into a VerificationResult. Pure. Throws on empty. */
+type Verdict = "pass" | "fail" | "unverifiable";
+
+/** Normalize a criterion's verdict, tolerating the older boolean `passed` shape. */
+function toVerdict(o: { verdict?: unknown; passed?: unknown }): Verdict {
+  const v = String(o.verdict ?? "").toLowerCase();
+  if (v === "pass" || v === "fail" || v === "unverifiable") return v;
+  if (typeof o.passed === "boolean") return o.passed ? "pass" : "fail";
+  // Unknown/ambiguous → treat as unverifiable so a parse gap never hard-fails.
+  return "unverifiable";
+}
+
+/**
+ * Turn the reviewer's raw JSON into a VerificationResult. Pure. Throws on empty.
+ *
+ * Only a "fail" verdict blocks the run. "unverifiable" criteria — those needing
+ * a rendered page, visual/layout/typography, or cross-file/runtime checks that a
+ * diff can't show (there's no preview configured) — are reported informationally
+ * and never fail acceptance.
+ */
 export function interpretReviewResult(json: Record<string, unknown>): VerificationResult {
   const results = Array.isArray(json.results)
     ? (json.results as unknown[]).map((r) => {
-        const o = r as { criterion?: unknown; passed?: unknown; note?: unknown };
+        const o = r as { criterion?: unknown; verdict?: unknown; passed?: unknown; note?: unknown };
         return {
           criterion: String(o.criterion ?? ""),
-          passed: Boolean(o.passed),
+          verdict: toVerdict(o),
           note: String(o.note ?? ""),
         };
       })
     : [];
   if (results.length === 0) throw new Error("Reviewer returned no results");
 
-  const passed = typeof json.passed === "boolean" ? json.passed : results.every((r) => r.passed);
+  const failed = results.filter((r) => r.verdict === "fail");
+  const passedCount = results.filter((r) => r.verdict === "pass").length;
+  const unverifiable = results.filter((r) => r.verdict === "unverifiable").length;
+  // The change passes acceptance unless the diff actually CONTRADICTS a criterion.
+  const passed = failed.length === 0;
+
+  const label = (v: Verdict) => (v === "pass" ? "PASS" : v === "fail" ? "FAIL" : "N/A ");
   const output = results.map(
-    (r) => `${r.passed ? "PASS" : "FAIL"}  ${r.criterion}${r.note ? ` — ${r.note}` : ""}`
+    (r) => `${label(r.verdict)} ${r.criterion}${r.note ? ` — ${r.note}` : ""}`
   );
+
+  const tail = unverifiable
+    ? ` (${unverifiable} not verifiable from the diff — no preview configured)`
+    : "";
   const summary =
     String(json.summary ?? "").trim() ||
-    `${results.filter((r) => r.passed).length}/${results.length} acceptance criteria met (code review).`;
+    (passed
+      ? `${passedCount}/${results.length} acceptance criteria met by code review${tail}.`
+      : `${failed.length} criterion(a) contradicted by the diff${tail}.`);
+
   return { kind: "acceptance", passed, summary, output, screenshots: [] };
 }
 

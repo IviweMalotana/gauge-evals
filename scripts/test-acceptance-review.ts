@@ -126,22 +126,44 @@ async function main() {
   check("result.kind is 'acceptance'", result.kind === "acceptance");
   check("output records a PASS line", result.output.some((l) => l.startsWith("PASS")));
 
-  // 3. Guard against the original bug's shape: if a reviewer ever returns a
-  //    PASS sub-verdict, interpretReviewResult must not report failure.
-  console.log("\ninterpretReviewResult (no self-contradiction)");
+  // 3. Guard against the original bug's shape: a PASS verdict must not fail.
+  console.log("\ninterpretReviewResult (verdict semantics)");
   const passInterpret = interpretReviewResult({
     summary: "ok",
-    passed: true,
-    results: [{ criterion: "x", passed: true, note: "+ line" }],
+    results: [{ criterion: "x", verdict: "pass", note: "+ line" }],
   });
-  check("a PASS sub-verdict yields passed:true", passInterpret.passed === true);
+  check("a 'pass' verdict yields passed:true", passInterpret.passed === true);
 
-  // 4. And it still fails honestly when the reviewer genuinely rejects.
+  // 4. It still fails honestly when the diff genuinely contradicts a criterion.
   const failInterpret = interpretReviewResult({
-    passed: false,
-    results: [{ criterion: "x", passed: false, note: "absent" }],
+    results: [{ criterion: "x", verdict: "fail", note: "contradicted" }],
   });
-  check("a FAIL sub-verdict yields passed:false", failInterpret.passed === false);
+  check("a 'fail' verdict yields passed:false", failInterpret.passed === false);
+
+  // 5. The reported bug: some sub-criteria are only checkable at runtime/visually
+  //    (typography consistency, non-interference). "unverifiable" must NOT block.
+  const mixed = interpretReviewResult({
+    results: [
+      { criterion: "text present as subtitle", verdict: "pass", note: "+ line" },
+      { criterion: "visible on load", verdict: "pass", note: "+ line" },
+      { criterion: "doesn't change by session", verdict: "pass", note: "static" },
+      { criterion: "typography consistent with other headings", verdict: "unverifiable", note: "needs render" },
+      { criterion: "doesn't interfere with siblings", verdict: "unverifiable", note: "needs render" },
+    ],
+  });
+  check("3 pass + 2 unverifiable → passed:true (not blocked)", mixed.passed === true, JSON.stringify(mixed));
+  check("unverifiable criteria render as N/A, not FAIL", mixed.output.filter((l) => l.startsWith("N/A")).length === 2 && !mixed.output.some((l) => l.startsWith("FAIL")));
+  check("summary flags the unverifiable count", /not verifiable from the diff/.test(mixed.summary), mixed.summary);
+
+  // 6. A run that is ONLY unverifiable still doesn't hard-fail (non-blocking).
+  const allUnver = interpretReviewResult({
+    results: [{ criterion: "looks nice", verdict: "unverifiable", note: "visual" }],
+  });
+  check("all-unverifiable → passed:true (no contradiction)", allUnver.passed === true);
+
+  // 7. Back-compat: an older boolean `passed:false` still fails.
+  const legacyFail = interpretReviewResult({ results: [{ criterion: "x", passed: false, note: "absent" }] });
+  check("legacy boolean passed:false still fails", legacyFail.passed === false);
 
   console.log("");
   if (failures > 0) {
