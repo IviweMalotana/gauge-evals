@@ -20,7 +20,7 @@ export default function LoginPage() {
     <div className="container" style={{ maxWidth: 460 }}>
       <div className="hero" style={{ paddingBottom: 8 }}>
         <h1 style={{ fontSize: 28 }}>Sign in</h1>
-        <p className="small">Welcome back.</p>
+        <p className="small">Welcome back</p>
       </div>
       <div className="card">
         <form action={action}>
