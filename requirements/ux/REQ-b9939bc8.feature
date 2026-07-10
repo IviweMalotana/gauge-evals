@@ -6,6 +6,7 @@ In order to access the system / As a registered user / I want to sign in with my
   Scenario: Sign in with valid credentials
     Given I have a registered account
     And I am on the login page
+    And I see the 'Welcome back' subtitle above the form
     When I enter my correct email and password
     And I submit the form
     Then The system verifies my password against the stored hash
@@ -17,3 +18,4 @@ In order to access the system / As a registered user / I want to sign in with my
     When I attempt to sign in
     Then I see an error message stating credentials are invalid
     And No session is created
+    And The 'Welcome back' subtitle remains visible
