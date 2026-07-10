@@ -42,6 +42,9 @@ consistent with the existing code's style and conventions.
 - Only create a new file if the change genuinely requires one; if you do, its
   path must fit the repository's existing structure (see the file list).
 - Never touch unrelated code.
+- Before adding any user-visible text (headings, labels, copy), CHECK whether
+  the same or nearly-identical text already exists in the file. If it does,
+  edit the existing element instead of inserting a second, duplicate one.
 
 Reply with a single JSON object only, matching exactly this shape:
 {
@@ -186,6 +189,26 @@ Return the file changes as JSON.`,
     );
   }
 
+  // Duplicate-copy guard: flag user-visible text the change ADDS to a file that
+  // already displays the same (or near-identical) text — the kind of sloppy
+  // duplication a human reviewer would reject (e.g. a second "Welcome back").
+  const oldByPath = new Map(context.map((c) => [c.path, c.contents]));
+  const dupWarnings: string[] = [];
+  for (const f of proposed) {
+    if (!sourceFiles.includes(f.path)) continue; // brand-new file — nothing to duplicate
+    const old = oldByPath.get(f.path) ?? (await getFile(client, f.path, base))?.contents ?? "";
+    if (!old) continue;
+    for (const d of detectDuplicateCopy(old, f.contents)) {
+      dupWarnings.push(`${f.path}: adds "${d.added}" but "${d.existing}" already exists on the page`);
+    }
+  }
+  if (dupWarnings.length > 0) {
+    await ctx.log(
+      `⚠️ Possible duplicate copy — the change repeats text already on the page. Review before merge.`,
+      { duplicates: dupWarnings }
+    );
+  }
+
   for (const f of proposed) {
     const existing = await getFile(client, f.path, branch);
     await putFile(client, {
@@ -199,7 +222,10 @@ Return the file changes as JSON.`,
   const changed = proposed.map((f) => f.path);
   await ctx.log(`Committed ${changed.length} file(s) to ${branch}.`, { files: changed });
 
-  const summary = String(json.summary ?? "").trim() || `Implemented "${ctx.request.title}".`;
+  const baseSummary = String(json.summary ?? "").trim() || `Implemented "${ctx.request.title}".`;
+  const summary = dupWarnings.length
+    ? `${baseSummary}\n\n⚠️ Possible duplicate copy: ${dupWarnings.join("; ")}`
+    : baseSummary;
   const diff = [
     `Committed ${changed.length} file(s) to \`${branch}\` (by ${env.ANTHROPIC_MODEL}):`,
     ...changed.map((p) => `- ${p}`),
@@ -237,6 +263,93 @@ export function filterProposedFiles(
     else rejected.push(f.path);
   }
   return { accepted: accepted.slice(0, MAX_CHANGED_FILES), rejected };
+}
+
+// --- Duplicate-copy detection (pure, unit-tested) ---
+
+/** Extract user-visible JSX text nodes from source (`>text<`), normalized-ready. */
+export function extractVisibleText(src: string): string[] {
+  const out: string[] = [];
+  for (const m of src.matchAll(/>([^<>{}]+)</g)) {
+    const t = m[1].replace(/\s+/g, " ").trim();
+    if (t.length >= 3 && /[a-zA-Z]/.test(t)) out.push(t);
+  }
+  return out;
+}
+
+/** Normalize copy for comparison: lowercase, collapse spaces, drop edge punctuation. */
+function normalizeCopy(t: string): string {
+  return t
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/^[\s.,!?;:"'—–-]+|[\s.,!?;:"'—–-]+$/g, "")
+    .trim();
+}
+
+function countBy(items: string[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const it of items) m.set(it, (m.get(it) ?? 0) + 1);
+  return m;
+}
+
+export interface DuplicateCopy {
+  added: string; // the near-identical text the change introduces
+  existing: string; // the text already present in the old file
+}
+
+/**
+ * Detect user-visible text the new version ADDS that duplicates (exactly or
+ * nearly) text already present in the old version. Catches the "second Welcome
+ * back" class of regression where a copy request is fulfilled by inserting a new
+ * element instead of noticing the phrase already renders on the page.
+ *
+ * "Added" = a normalized phrase that occurs more times in the new file than the
+ * old. "Near-identical" = normalized-equal, or one phrase contains the other
+ * (guarded by a min length so short words don't false-positive).
+ */
+export function detectDuplicateCopy(oldSrc: string, newSrc: string): DuplicateCopy[] {
+  const oldTexts = extractVisibleText(oldSrc);
+  const newTexts = extractVisibleText(newSrc);
+  const oldNormList = oldTexts.map(normalizeCopy).filter(Boolean);
+  const oldCounts = countBy(oldNormList);
+  const newCounts = countBy(newTexts.map(normalizeCopy).filter(Boolean));
+  const oldOriginalByNorm = new Map<string, string>();
+  oldTexts.forEach((t) => {
+    const n = normalizeCopy(t);
+    if (n && !oldOriginalByNorm.has(n)) oldOriginalByNorm.set(n, t);
+  });
+
+  const seen = new Set<string>();
+  const out: DuplicateCopy[] = [];
+  // Near-identical: exactly equal after normalization, or one fully contains the
+  // other AND the shorter is most of the longer (so a whole sentence doesn't
+  // "match" a short phrase like "sign in" embedded in it).
+  const near = (a: string, b: string) => {
+    if (a === b) return true;
+    const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+    return long.includes(short) && short.length >= 8 && short.length >= 0.8 * long.length;
+  };
+
+  for (const [norm, count] of newCounts) {
+    if (seen.has(norm)) continue;
+    const addedInstances = count - (oldCounts.get(norm) ?? 0);
+    if (addedInstances <= 0) continue; // not newly added text
+    // Find an existing (old) phrase this duplicates — but only when that phrase
+    // is still RETAINED in the new file. If the old phrase was replaced/edited
+    // away (its count dropped), the new text is an edit, not a duplicate.
+    for (const [oldNorm, oldOriginal] of oldOriginalByNorm) {
+      if (norm === oldNorm && addedInstances <= 0) continue;
+      const oldCount = oldCounts.get(oldNorm) ?? 0;
+      const retained = oldCount > 0 && (newCounts.get(oldNorm) ?? 0) >= oldCount;
+      if (retained && near(norm, oldNorm)) {
+        const added = [...newTexts].find((t) => normalizeCopy(t) === norm) ?? norm;
+        out.push({ added, existing: oldOriginal });
+        seen.add(norm);
+        break;
+      }
+    }
+  }
+  return out;
 }
 
 /** Put likely-app code first so a capped list keeps the important paths. */
