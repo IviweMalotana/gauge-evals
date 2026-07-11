@@ -53,6 +53,13 @@ export default async function Dashboard() {
       </div>
 
       <div className="card">
+        <h3 style={{ margin: "0 0 6px 0" }}>Getting started</h3>
+        <p className="muted" style={{ margin: 0 }}>
+          Start by creating your first evaluation request to measure your AI model's performance
+        </p>
+      </div>
+
+      <div className="card">
         <div className="row">
           <h3 style={{ margin: 0 }}>Recent requests</h3>
           <div className="spacer" />
