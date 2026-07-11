@@ -13,7 +13,7 @@
     "prisma:push": "prisma db push",
     "seed": "tsx prisma/seed.ts",
     "setup": "prisma db push && tsx prisma/seed.ts",
-    "test": "tsx scripts/test-acceptance-review.ts && tsx scripts/test-requirements-seed.ts && tsx scripts/test-impact.ts && tsx scripts/test-duplicate-copy.ts && tsx scripts/test-design.ts"
+    "test": "tsx scripts/test-acceptance-review.ts && tsx scripts/test-requirements-seed.ts && tsx scripts/test-impact.ts && tsx scripts/test-duplicate-copy.ts && tsx scripts/test-design.ts && tsx scripts/test-ui-fixer.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.1",
