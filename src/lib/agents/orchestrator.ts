@@ -9,6 +9,7 @@ import { syncRequirementIndex } from "../requirements/store";
 import { runUxCheck } from "./uxCheck";
 import { runBrd } from "./brd";
 import { runImpactAnalysis, saveImpact, loadImpactDrafts, draftToFile } from "./impact";
+import { checkUiConformance, formatConformanceWarnings } from "./uiFixer";
 import { runPlanner } from "./planner";
 import { runBuilder } from "./builder";
 import { runAcceptance, runBugFix, runRegression } from "./tester";
@@ -200,6 +201,23 @@ export async function runAfterApproval(requestId: string): Promise<void> {
     //     carries code + updated Gherkin together (Phase 3). ---
     if (ctx.githubToken && ctx.repo && build.committed) {
       await commitRequirementDrafts(request, ctx, build.branch);
+    }
+
+    // --- UI conformance vs. the design system (Phase 4b, non-blocking). Flags
+    //     violations into the build summary/PR body; never fails the run. ---
+    try {
+      const conf = await checkUiConformance(ctx, build);
+      if (conf && conf.violations.length > 0) {
+        const note = `⚠️ UI conformance: ${formatConformanceWarnings(conf.violations).join("; ")}`;
+        build.summary = `${build.summary}\n\n${note}`;
+        build.diff = `${build.diff}\n\n${note}`;
+        await db.build.update({
+          where: { requestId },
+          data: { summary: build.summary, diff: build.diff },
+        });
+      }
+    } catch (err) {
+      await logEvent(requestId, "ui", `UI conformance check skipped: ${(err as Error).message}`, undefined, "warn");
     }
 
     // --- Verification: acceptance → bug-fix review → regression ---
