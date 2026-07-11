@@ -5,6 +5,7 @@ import { features } from "@/lib/env";
 import { APP_NAME } from "@/lib/brand";
 import {
   disconnectGithub,
+  extractDesign,
   seedRequirements,
   setAppUrl,
   setDefaultRepo,
@@ -43,6 +44,16 @@ export default async function SettingsPage({
   ]);
   const seedResult = parseSeedResult(lastSeed?.result ?? null);
   const seeding = lastSeed?.status === "queued" || lastSeed?.status === "running";
+
+  const [designCount, lastDesign] = await Promise.all([
+    db.requirementDoc.count({ where: { companyId: user.companyId, category: "design" } }),
+    db.job.findFirst({
+      where: { companyId: user.companyId, kind: "extract_design" },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+  const designResult = parseSeedResult(lastDesign?.result ?? null);
+  const extracting = lastDesign?.status === "queued" || lastDesign?.status === "running";
 
   return (
     <div>
@@ -243,6 +254,62 @@ export default async function SettingsPage({
           )
         ) : (
           <p className="small muted">Ask an owner or admin to seed the corpus.</p>
+        )}
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Design system</h3>
+        <p className="small muted">
+          The strict definitions of your UI component library (cards, tables,
+          dialogs, buttons, badges…), learned from the codebase. Extraction opens
+          a PR with a <span className="mono">design/components.md</span> catalog
+          and a design-category requirement per component, which {APP_NAME}'s UI
+          checks enforce.
+        </p>
+        <p className="small">
+          Design components indexed: <strong>{designCount}</strong>
+          {lastDesign && (
+            <>
+              {" · "}last extract: <span className="mono">{lastDesign.status}</span>
+              {lastDesign.status === "done" && designResult.count != null && (
+                <>
+                  {" "}({designResult.count} components
+                  {designResult.prUrl ? (
+                    <>
+                      {", "}
+                      <a href={designResult.prUrl} target="_blank" rel="noreferrer">
+                        PR{designResult.prNumber ? ` #${designResult.prNumber}` : ""}
+                      </a>
+                    </>
+                  ) : null}
+                  )
+                </>
+              )}
+              {lastDesign.status === "error" && lastDesign.error && (
+                <span className="muted"> — {lastDesign.error}</span>
+              )}
+            </>
+          )}
+        </p>
+        {manage ? (
+          canSeed ? (
+            <form action={extractDesign}>
+              <button className="btn secondary" type="submit" disabled={extracting}>
+                {extracting
+                  ? "Extracting… (a PR will open on your repo)"
+                  : designCount > 0
+                    ? "Re-extract design system"
+                    : "Extract design system"}
+              </button>
+            </form>
+          ) : (
+            <p className="small muted">
+              Connect GitHub, set a default repo, and configure{" "}
+              <span className="mono">ANTHROPIC_API_KEY</span> to enable extraction.
+            </p>
+          )
+        ) : (
+          <p className="small muted">Ask an owner or admin to extract the design system.</p>
         )}
       </div>
 
