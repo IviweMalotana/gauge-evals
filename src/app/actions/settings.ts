@@ -65,6 +65,27 @@ export async function seedRequirements(): Promise<void> {
   revalidatePath("/settings");
 }
 
+/**
+ * Kick off design-system extraction for the connected repo (background):
+ * reads the UI code, learns the component library, opens a PR with the catalog
+ * + design-category requirements. No-op if one is already queued/running.
+ */
+export async function extractDesign(): Promise<void> {
+  const user = await requireUser();
+  if (!can.manageCompany(user.role)) return;
+  const company = await db.company.findUnique({ where: { id: user.companyId } });
+  if (!company?.githubConnected || !company.githubAccessToken || !company.githubDefaultRepo) return;
+  if (!features.anthropic) return;
+
+  const inFlight = await db.job.findFirst({
+    where: { companyId: user.companyId, kind: "extract_design", status: { in: ["queued", "running"] } },
+  });
+  if (inFlight) return;
+
+  await enqueueCompanyJob("extract_design", user.companyId);
+  revalidatePath("/settings");
+}
+
 export async function disconnectGithub(): Promise<void> {
   const user = await requireUser();
   if (!can.manageCompany(user.role)) return;
