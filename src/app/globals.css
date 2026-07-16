@@ -70,6 +70,49 @@ h3 {
   text-decoration: none;
 }
 
+/* GitHub connection indicator in the top bar */
+.gh-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 18px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.gh-status:hover {
+  text-decoration: none;
+  border-color: var(--accent);
+  color: var(--text);
+}
+.gh-status .mono {
+  color: var(--text);
+}
+.gh-status.gh-off {
+  color: var(--muted);
+}
+.gh-avatar {
+  border-radius: 50%;
+  display: block;
+}
+.gh-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  display: inline-block;
+}
+.gh-dot-on {
+  background: var(--accent-2);
+}
+.gh-sep,
+.gh-more {
+  color: var(--muted);
+}
+
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
