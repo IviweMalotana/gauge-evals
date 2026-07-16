@@ -109,10 +109,33 @@ export default async function SettingsPage({
 
         {company?.githubConnected ? (
           <div>
-            <p>
-              Connected as{" "}
-              <span className="mono">@{company.githubLogin ?? "unknown"}</span>. The
-              PR agent will open pull requests using this account.
+            <div className="row" style={{ gap: 10, alignItems: "center", marginBottom: 8 }}>
+              {company.githubAvatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={company.githubAvatarUrl}
+                  alt=""
+                  width={40}
+                  height={40}
+                  style={{ borderRadius: "50%", border: "1px solid var(--border)" }}
+                />
+              ) : null}
+              <div>
+                <div>
+                  <span className="badge feature">Connected</span>{" "}
+                  <a href={`https://github.com/${company.githubLogin ?? ""}`} target="_blank" rel="noreferrer">
+                    <span className="mono">@{company.githubLogin ?? "unknown"}</span>
+                  </a>
+                </div>
+                <div className="small muted">
+                  {connectedRepos.length} repositor{connectedRepos.length === 1 ? "y" : "ies"} ·
+                  default{" "}
+                  <span className="mono">{company.githubDefaultRepo ?? "none"}</span>
+                </div>
+              </div>
+            </div>
+            <p className="small muted" style={{ marginTop: 0 }}>
+              The PR agent opens pull requests using this account.
             </p>
             <h4 style={{ marginBottom: 4 }}>Connected repositories</h4>
             <p className="small muted" style={{ marginTop: 0 }}>

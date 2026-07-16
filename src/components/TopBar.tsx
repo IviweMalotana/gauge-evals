@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { logout } from "@/app/actions/auth";
 import { APP_NAME } from "@/lib/brand";
+import { GithubStatus, type GithubStatusInfo } from "@/components/GithubStatus";
 
 export function TopBar({
   companyName,
   role,
+  github,
 }: {
   companyName: string;
   role: string;
+  github: GithubStatusInfo;
 }) {
   return (
     <div className="topbar">
@@ -20,6 +23,7 @@ export function TopBar({
         </span>
       </div>
       <nav className="row">
+        <GithubStatus info={github} />
         <Link href="/requests">Requests</Link>
         <Link href="/members">Members</Link>
         <Link href="/settings">Settings</Link>

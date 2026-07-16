@@ -31,6 +31,7 @@ model Company {
   // GitHub connection (per-company repo the pipeline targets)
   githubConnected    Boolean @default(false)
   githubLogin        String?
+  githubAvatarUrl    String? // the connected account's avatar, for the UI
   githubAccessToken  String? // encrypted-at-rest in production; stored plainly in dev
   githubDefaultRepo  String? // e.g. "acme/webapp"
   appBaseUrl         String? // where the company's app runs; UX-check drives it

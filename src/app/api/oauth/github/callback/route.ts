@@ -53,13 +53,14 @@ export async function GET(req: NextRequest) {
         Accept: "application/vnd.github+json",
       },
     });
-    const me = (await meRes.json()) as { login?: string };
+    const me = (await meRes.json()) as { login?: string; avatar_url?: string };
 
     await db.company.update({
       where: { id: user.companyId },
       data: {
         githubConnected: true,
         githubLogin: me.login ?? null,
+        githubAvatarUrl: me.avatar_url ?? null,
         githubAccessToken: encryptSecret(tokenJson.access_token), // encrypted at rest
       },
     });
