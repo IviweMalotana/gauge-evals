@@ -71,16 +71,81 @@ h3 {
   top: 0;
 }
 .sidebar-top {
-  padding: 14px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border);
-}
-.repo-switch {
-  width: 100%;
-  margin-top: 4px;
 }
 .sidebar-list {
   overflow-y: auto;
-  padding: 10px 0;
+  padding: 8px 0;
+}
+
+/* Repositories as a list; the active one expands to its sessions */
+.repo-group {
+  border-bottom: 1px solid var(--border);
+}
+.repo-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+button.repo-head:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+.repo-head.active {
+  color: var(--text);
+  background: rgba(109, 139, 255, 0.08);
+  border-left: 2px solid var(--accent);
+}
+.repo-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.repo-count {
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 7px;
+  min-width: 18px;
+  text-align: center;
+}
+.repo-body {
+  padding: 4px 0 10px;
+}
+.new-session {
+  display: block;
+  margin: 4px 12px 6px;
+  padding: 6px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 12.5px;
+  text-align: center;
+}
+.new-session:hover {
+  border-color: var(--accent);
+  text-decoration: none;
+}
+.add-repo {
+  display: block;
+  padding: 10px 14px;
+  color: var(--muted);
+}
+.add-repo:hover {
+  color: var(--text);
+  text-decoration: none;
 }
 .sidebar-heading {
   padding: 4px 14px 8px;
