@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/guards";
 import { db } from "@/lib/db";
 import { PIPELINE_STEPS, isActive, statusLabel, stepState } from "@/lib/pipeline-view";
+import { buildPreviewUrl } from "@/lib/agents/preview";
 import { BrdApproval } from "@/components/BrdApproval";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { retryRequest } from "@/app/actions/requests";
@@ -54,6 +55,21 @@ export default async function RequestDetail({
     },
   });
   if (!request) notFound();
+
+  const company = await db.company.findUnique({
+    where: { id: user.companyId },
+    select: { appBaseUrl: true, previewUrlTemplate: true, githubDefaultRepo: true },
+  });
+  const effectiveRepo = request.repoFullName ?? company?.githubDefaultRepo ?? null;
+  const appUrl = company?.appBaseUrl ?? null;
+  const previewUrl =
+    request.build && company?.previewUrlTemplate
+      ? buildPreviewUrl(company.previewUrlTemplate, request.build.branch, effectiveRepo)
+      : null;
+  const branchUrl =
+    request.build && effectiveRepo
+      ? `https://github.com/${effectiveRepo}/tree/${request.build.branch}`
+      : null;
 
   const criteria = parseArray(request.brd?.acceptanceCriteria);
   const uxSteps = parseArray(request.uxCheck?.steps);
@@ -127,6 +143,44 @@ export default async function RequestDetail({
           <div className="notice" style={{ marginTop: 12 }}>
             The BRD was rejected. No code was touched.
           </div>
+        )}
+      </div>
+
+      {/* View the UI — one-click links to the running site and the change */}
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>View the UI</h3>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          {appUrl && (
+            <a className="btn secondary small" href={appUrl} target="_blank" rel="noreferrer">
+              Open the live app ↗
+            </a>
+          )}
+          {previewUrl && (
+            <a className="btn small" href={previewUrl} target="_blank" rel="noreferrer">
+              View this change (preview) ↗
+            </a>
+          )}
+          {branchUrl && (
+            <a className="btn secondary small" href={branchUrl} target="_blank" rel="noreferrer">
+              Branch on GitHub ↗
+            </a>
+          )}
+          {request.pullReq?.url && (
+            <a className="btn secondary small" href={request.pullReq.url} target="_blank" rel="noreferrer">
+              Pull request ↗
+            </a>
+          )}
+        </div>
+        {!appUrl && (
+          <p className="small muted" style={{ marginBottom: 0 }}>
+            Add an <strong>app URL</strong> in <a href="/settings">Settings</a> for a one-click link to the running site.
+          </p>
+        )}
+        {request.build && !previewUrl && (
+          <p className="small muted" style={{ marginBottom: 0 }}>
+            To preview <em>this change</em> live before merging, set a{" "}
+            <strong>per-branch preview URL</strong> in <a href="/settings">Settings</a>.
+          </p>
         )}
       </div>
 
