@@ -39,6 +39,23 @@ model Company {
   members      Membership[]
   requests     Request[]
   requirements RequirementDoc[]
+  repos        Repo[]
+}
+
+// A GitHub repository connected to a company. A company connects GitHub once
+// (OAuth) and can attach several repos; one is the default the pipeline targets
+// when a request doesn't pick a specific one. `githubDefaultRepo` on Company
+// mirrors the default repo's fullName for backward-compatible reads.
+model Repo {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fullName  String // "owner/name"
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, fullName])
+  @@index([companyId])
 }
 
 model User {
@@ -84,6 +101,7 @@ model Request {
   type        String   @default("UNKNOWN") // RequestType
   status      String   @default("INTAKE") // RequestStatus
   priority    String   @default("normal") // low | normal | high
+  repoFullName String? // which connected repo this request targets (null → company default)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

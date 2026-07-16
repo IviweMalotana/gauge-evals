@@ -6,15 +6,35 @@ import { requireUser } from "@/lib/guards";
 import { can } from "@/lib/auth";
 import { features } from "@/lib/env";
 import { enqueueCompanyJob } from "@/lib/queue";
+import { addCompanyRepo, removeCompanyRepo, setCompanyDefaultRepo } from "@/lib/repos";
 
+/** Attach a repository to the company (from the picker or a typed owner/name). */
+export async function addRepo(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  if (!can.manageCompany(user.role)) return;
+  // The picker submits `repoSelect`; the free-text box submits `repo`.
+  const picked = String(formData.get("repoSelect") ?? "").trim();
+  const typed = String(formData.get("repo") ?? "").trim();
+  const fullName = picked && picked !== "__manual__" ? picked : typed;
+  if (fullName) await addCompanyRepo(user.companyId, fullName);
+  revalidatePath("/settings");
+}
+
+/** Make a connected repo the company default. */
 export async function setDefaultRepo(formData: FormData): Promise<void> {
   const user = await requireUser();
   if (!can.manageCompany(user.role)) return;
-  const repo = String(formData.get("repo") ?? "").trim();
-  await db.company.update({
-    where: { id: user.companyId },
-    data: { githubDefaultRepo: repo || null },
-  });
+  const repoId = String(formData.get("repoId") ?? "");
+  if (repoId) await setCompanyDefaultRepo(user.companyId, repoId);
+  revalidatePath("/settings");
+}
+
+/** Detach a repo from the company. */
+export async function removeRepo(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  if (!can.manageCompany(user.role)) return;
+  const repoId = String(formData.get("repoId") ?? "");
+  if (repoId) await removeCompanyRepo(user.companyId, repoId);
   revalidatePath("/settings");
 }
 
@@ -89,12 +109,14 @@ export async function extractDesign(): Promise<void> {
 export async function disconnectGithub(): Promise<void> {
   const user = await requireUser();
   if (!can.manageCompany(user.role)) return;
+  await db.repo.deleteMany({ where: { companyId: user.companyId } });
   await db.company.update({
     where: { id: user.companyId },
     data: {
       githubConnected: false,
       githubLogin: null,
       githubAccessToken: null,
+      githubDefaultRepo: null,
     },
   });
   revalidatePath("/settings");

@@ -83,6 +83,9 @@ export default async function RequestDetail({
       <p className="muted small">
         Filed by {request.createdBy.name ?? request.createdBy.email} ·{" "}
         {request.priority} priority
+        {request.repoFullName ? (
+          <> · repo <span className="mono">{request.repoFullName}</span></>
+        ) : null}
       </p>
 
       {/* Live-refresh while the background worker advances the pipeline */}
