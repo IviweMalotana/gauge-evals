@@ -3,14 +3,9 @@ import { cookies } from "next/headers";
 import { requireUser } from "@/lib/guards";
 import { db } from "@/lib/db";
 import { TopBar } from "@/components/TopBar";
-import { AppSidebar } from "@/components/AppSidebar";
+import { AppSidebar, type SidebarRequest } from "@/components/AppSidebar";
 import type { GithubStatusInfo } from "@/components/GithubStatus";
-import {
-  ensureReposBackfilled,
-  listCompanyRepos,
-  requestMatchesRepo,
-  resolveActiveRepo,
-} from "@/lib/repos";
+import { ensureReposBackfilled, listCompanyRepos, resolveActiveRepo } from "@/lib/repos";
 import { ACTIVE_REPO_COOKIE } from "@/lib/workspace";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
@@ -37,11 +32,15 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     where: { companyId: user.companyId },
     orderBy: { createdAt: "desc" },
     select: { id: true, title: true, status: true, repoFullName: true },
-    take: 100,
+    take: 200,
   });
-  const sidebarRequests = allRequests.filter((r) =>
-    requestMatchesRepo(r.repoFullName, activeRepo, company?.githubDefaultRepo)
-  );
+  // Group sessions under the repo they ran against (a null repo used the default).
+  const requestsByRepo: Record<string, SidebarRequest[]> = {};
+  for (const r of allRequests) {
+    const key = r.repoFullName ?? company?.githubDefaultRepo ?? "";
+    if (!key) continue;
+    (requestsByRepo[key] ??= []).push({ id: r.id, title: r.title, status: r.status });
+  }
 
   const github: GithubStatusInfo = {
     connected: Boolean(company?.githubConnected),
@@ -55,7 +54,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     <div>
       <TopBar companyName={user.companyName} role={user.role} github={github} />
       <div className="shell">
-        <AppSidebar repos={repoNames} activeRepo={activeRepo} requests={sidebarRequests} />
+        <AppSidebar repos={repoNames} activeRepo={activeRepo} requestsByRepo={requestsByRepo} />
         <div className="container main">{children}</div>
       </div>
     </div>
