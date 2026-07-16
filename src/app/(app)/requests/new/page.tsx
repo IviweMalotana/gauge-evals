@@ -28,6 +28,14 @@ export default async function NewRequestPage() {
         Describe the problem or the capability you want. The UX-check agent will
         classify it (bug vs feature), then draft a BRD for you to approve.
       </p>
+      {company?.appBaseUrl && (
+        <p className="small">
+          Looking at the current UI helps you describe the change:{" "}
+          <a href={company.appBaseUrl} target="_blank" rel="noreferrer">
+            Open {activeRepo ?? "the app"} ↗
+          </a>
+        </p>
+      )}
       <div className="card">
         <NewRequestForm repos={repos.map((r) => r.fullName)} defaultRepo={activeRepo} />
       </div>
