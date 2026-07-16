@@ -4,13 +4,18 @@ import { can } from "@/lib/auth";
 import { features } from "@/lib/env";
 import { APP_NAME } from "@/lib/brand";
 import {
+  addRepo,
   disconnectGithub,
   extractDesign,
+  removeRepo,
   seedRequirements,
   setAppUrl,
   setDefaultRepo,
   setPreviewTemplate,
 } from "@/app/actions/settings";
+import { decryptSecret } from "@/lib/crypto";
+import { ensureReposBackfilled, listCompanyRepos } from "@/lib/repos";
+import { listUserRepos } from "@/lib/github";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +36,23 @@ export default async function SettingsPage({
   const user = await requireUser();
   const manage = can.manageCompany(user.role);
   const company = await db.company.findUnique({ where: { id: user.companyId } });
+
+  // Multi-repo: backfill the legacy single default into the Repo table, then
+  // load the connected repos and (best-effort) the account's repos for the picker.
+  if (company?.githubConnected) {
+    await ensureReposBackfilled({ id: company.id, githubDefaultRepo: company.githubDefaultRepo });
+  }
+  const connectedRepos = company?.githubConnected ? await listCompanyRepos(user.companyId) : [];
+  const connectedNames = new Set(connectedRepos.map((r) => r.fullName));
+  let pickerRepos: { fullName: string; private: boolean }[] = [];
+  if (company?.githubConnected && manage) {
+    const token = decryptSecret(company.githubAccessToken);
+    if (token) {
+      pickerRepos = (await listUserRepos(token).catch(() => []))
+        .filter((r) => !connectedNames.has(r.fullName))
+        .slice(0, 200);
+    }
+  }
 
   const canSeed = Boolean(
     company?.githubConnected && company.githubDefaultRepo && features.anthropic
@@ -92,17 +114,66 @@ export default async function SettingsPage({
               <span className="mono">@{company.githubLogin ?? "unknown"}</span>. The
               PR agent will open pull requests using this account.
             </p>
+            <h4 style={{ marginBottom: 4 }}>Connected repositories</h4>
+            <p className="small muted" style={{ marginTop: 0 }}>
+              Attach one or more repos. The <strong>default</strong> is used when a
+              request doesn't pick a specific repo.
+            </p>
+            {connectedRepos.length === 0 ? (
+              <p className="small muted">No repositories connected yet.</p>
+            ) : (
+              <ul style={{ listStyle: "none", padding: 0, margin: "0 0 12px" }}>
+                {connectedRepos.map((r) => (
+                  <li key={r.id} className="row" style={{ gap: 8, marginBottom: 6, alignItems: "center" }}>
+                    <span className="mono">{r.fullName}</span>
+                    {r.isDefault && <span className="badge status">default</span>}
+                    <div className="spacer" />
+                    {manage && !r.isDefault && (
+                      <form action={setDefaultRepo}>
+                        <input type="hidden" name="repoId" value={r.id} />
+                        <button className="btn secondary small" type="submit">
+                          Make default
+                        </button>
+                      </form>
+                    )}
+                    {manage && (
+                      <form action={removeRepo}>
+                        <input type="hidden" name="repoId" value={r.id} />
+                        <button className="btn danger small" type="submit">
+                          Remove
+                        </button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
             {manage && (
               <>
-                <form action={setDefaultRepo} className="row" style={{ marginBottom: 12 }}>
+                <form action={addRepo} className="row" style={{ marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                  {pickerRepos.length > 0 ? (
+                    <select name="repoSelect" defaultValue="" style={{ maxWidth: 320 }}>
+                      <option value="" disabled>
+                        Pick a repository…
+                      </option>
+                      {pickerRepos.map((r) => (
+                        <option key={r.fullName} value={r.fullName}>
+                          {r.fullName}
+                          {r.private ? " (private)" : ""}
+                        </option>
+                      ))}
+                      <option value="__manual__">Other — type below…</option>
+                    </select>
+                  ) : null}
                   <input
                     name="repo"
                     placeholder="owner/repo"
-                    defaultValue={company.githubDefaultRepo ?? ""}
-                    style={{ maxWidth: 320 }}
+                    style={{ maxWidth: 260 }}
+                    className="mono"
                   />
                   <button className="btn secondary" type="submit">
-                    Save default repo
+                    Add repository
                   </button>
                 </form>
                 <form action={disconnectGithub}>

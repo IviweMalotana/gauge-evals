@@ -33,6 +33,19 @@ async function gh<T>(
   return (await res.json()) as T;
 }
 
+/** List the repos the connected account can push to (for the repo picker). */
+export async function listUserRepos(token: string): Promise<{ fullName: string; private: boolean }[]> {
+  const c: GhClient = { token, repo: "" };
+  const res = await gh<{ full_name: string; private: boolean; permissions?: { push?: boolean } }[]>(
+    c,
+    "GET",
+    `/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member`
+  );
+  return (Array.isArray(res) ? res : [])
+    .filter((r) => r.permissions?.push !== false)
+    .map((r) => ({ fullName: r.full_name, private: r.private }));
+}
+
 /** The repo's default branch name and its head commit sha. */
 export async function getDefaultBranch(
   c: GhClient

@@ -8,11 +8,13 @@ import { requireUser } from "@/lib/guards";
 import { can } from "@/lib/auth";
 import { logEvent } from "@/lib/agents/orchestrator";
 import { enqueue } from "@/lib/queue";
+import { listCompanyRepos } from "@/lib/repos";
 
 const createSchema = z.object({
   title: z.string().min(4, "Give the request a clear title"),
   description: z.string().min(10, "Add a bit more detail so the agent can work"),
   priority: z.enum(["low", "normal", "high"]).default("normal"),
+  repoFullName: z.string().optional(),
 });
 
 export type ReqActionState = { error?: string } | undefined;
@@ -31,9 +33,20 @@ export async function createRequest(
     title: formData.get("title"),
     description: formData.get("description"),
     priority: formData.get("priority") ?? "normal",
+    repoFullName: formData.get("repoFullName") ?? undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  // Only accept a repo that's actually connected to this company; else leave
+  // null so the pipeline falls back to the company default.
+  let repoFullName: string | null = null;
+  if (parsed.data.repoFullName) {
+    const repos = await listCompanyRepos(user.companyId);
+    if (repos.some((r) => r.fullName === parsed.data.repoFullName)) {
+      repoFullName = parsed.data.repoFullName;
+    }
   }
 
   const request = await db.request.create({
@@ -41,6 +54,7 @@ export async function createRequest(
       title: parsed.data.title,
       description: parsed.data.description,
       priority: parsed.data.priority,
+      repoFullName,
       companyId: user.companyId,
       createdById: user.id,
     },

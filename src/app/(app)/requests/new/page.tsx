@@ -1,22 +1,17 @@
-"use client";
+import { requireUser } from "@/lib/guards";
+import { db } from "@/lib/db";
+import { ensureReposBackfilled, listCompanyRepos } from "@/lib/repos";
+import { NewRequestForm } from "@/components/NewRequestForm";
 
-import { useFormState, useFormStatus } from "react-dom";
-import { createRequest, type ReqActionState } from "@/app/actions/requests";
+export const dynamic = "force-dynamic";
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return (
-    <button className="btn" type="submit" disabled={pending} style={{ marginTop: 16 }}>
-      {pending ? "Filing…" : "File request"}
-    </button>
-  );
-}
-
-export default function NewRequestPage() {
-  const [state, action] = useFormState<ReqActionState, FormData>(
-    createRequest,
-    undefined
-  );
+export default async function NewRequestPage() {
+  const user = await requireUser();
+  const company = await db.company.findUnique({ where: { id: user.companyId } });
+  if (company?.githubConnected) {
+    await ensureReposBackfilled({ id: company.id, githubDefaultRepo: company.githubDefaultRepo });
+  }
+  const repos = await listCompanyRepos(user.companyId);
 
   return (
     <div style={{ maxWidth: 640 }}>
@@ -26,37 +21,17 @@ export default function NewRequestPage() {
         classify it (bug vs feature), then draft a BRD for you to approve.
       </p>
       <div className="card">
-        <form action={action}>
-          <label htmlFor="title">Title</label>
-          <input
-            id="title"
-            name="title"
-            placeholder="Checkout button does nothing on mobile"
-            required
-          />
-
-          <label htmlFor="description">Description</label>
-          <textarea
-            id="description"
-            name="description"
-            placeholder="What did you expect? What happened instead? Steps to see it, if it's a bug."
-            required
-          />
-
-          <label htmlFor="priority">Priority</label>
-          <select id="priority" name="priority" defaultValue="normal">
-            <option value="low">Low</option>
-            <option value="normal">Normal</option>
-            <option value="high">High</option>
-          </select>
-
-          {state?.error && <div className="error">{state.error}</div>}
-          <SubmitButton />
-        </form>
+        <NewRequestForm
+          repos={repos.map((r) => r.fullName)}
+          defaultRepo={company?.githubDefaultRepo ?? null}
+        />
       </div>
       <p className="small muted">
         Filing kicks off the pipeline in the background — you'll land on the
         request page and watch the UX check and BRD draft appear as they run.
+        {repos.length === 0 && company?.githubConnected === false && (
+          <> Connect GitHub and add a repository in Settings to target a repo.</>
+        )}
       </p>
     </div>
   );

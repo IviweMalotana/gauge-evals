@@ -36,11 +36,18 @@ async function buildContext(request: Request): Promise<AgentContext> {
       appBaseUrl: true,
       previewUrlTemplate: true,
       githubAccessToken: true,
+      repos: { select: { fullName: true } },
     },
   });
+  // Target the request's chosen repo if it's still connected, else the default.
+  const connected = new Set((company?.repos ?? []).map((r) => r.fullName));
+  const repo =
+    request.repoFullName && connected.has(request.repoFullName)
+      ? request.repoFullName
+      : company?.githubDefaultRepo ?? null;
   return {
     request,
-    repo: company?.githubDefaultRepo ?? null,
+    repo,
     appBaseUrl: company?.appBaseUrl ?? null,
     previewUrlTemplate: company?.previewUrlTemplate ?? null,
     githubToken: decryptSecret(company?.githubAccessToken),
