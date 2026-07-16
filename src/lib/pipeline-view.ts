@@ -59,6 +59,31 @@ export function isActive(status: string): boolean {
   ].includes(status);
 }
 
+/** One plain-language sentence describing what's happening at this status. */
+export function statusExplainer(status: string): string {
+  const map: Record<string, string> = {
+    INTAKE: "Just filed — queued to start.",
+    UX_CHECK: "Investigating the request against the app and code.",
+    BRD_DRAFTING: "Writing the business requirements and acceptance criteria.",
+    AWAITING_APPROVAL: "Waiting for a human to approve, alter, or reject the BRD.",
+    PLANNING: "Planning the implementation.",
+    BUILDING: "Writing the code change on a branch.",
+    TESTING: "Verifying the change against the acceptance criteria.",
+    BUGFIX_REVIEW: "Re-checking that the reported bug is fixed.",
+    REGRESSION: "Running a regression sweep.",
+    PR_CREATED: "Opening the pull request.",
+    DONE: "Done — a pull request is open for review.",
+    REJECTED: "Rejected at the approval gate — no code was touched.",
+    FAILED: "A stage failed — open it to see why and retry.",
+  };
+  return map[status] ?? "";
+}
+
+/** True when the request is blocked on a person (needs approval, or failed). */
+export function needsAttention(status: string): boolean {
+  return status === "AWAITING_APPROVAL" || status === "FAILED";
+}
+
 export function statusLabel(status: string): string {
   const map: Record<string, string> = {
     INTAKE: "Intake",
