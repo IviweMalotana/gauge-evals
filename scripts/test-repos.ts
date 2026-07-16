@@ -7,7 +7,12 @@
  * Run: npx tsx scripts/test-repos.ts
  */
 
-import { normalizeRepoFullName, resolveRepoForRequest } from "../src/lib/repos";
+import {
+  normalizeRepoFullName,
+  requestMatchesRepo,
+  resolveActiveRepo,
+  resolveRepoForRequest,
+} from "../src/lib/repos";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -37,6 +42,21 @@ function main() {
   check("falls back to default when request repo not connected", resolveRepoForRequest("acme/gone", connected, "acme/webapp") === "acme/webapp");
   check("falls back to default when request repo empty", resolveRepoForRequest(null, connected, "acme/webapp") === "acme/webapp");
   check("null when nothing available", resolveRepoForRequest(null, [], null) === null);
+
+  console.log("\nresolveActiveRepo (workspace)");
+  const conn = ["acme/webapp", "acme/api"];
+  check("honors a valid cookie choice", resolveActiveRepo("acme/api", conn, "acme/webapp") === "acme/api");
+  check("ignores a stale cookie → default", resolveActiveRepo("acme/gone", conn, "acme/webapp") === "acme/webapp");
+  check("no cookie → default", resolveActiveRepo(null, conn, "acme/webapp") === "acme/webapp");
+  check("no cookie/default → first connected", resolveActiveRepo(null, conn, null) === "acme/webapp");
+  check("nothing connected → null", resolveActiveRepo(null, [], null) === null);
+
+  console.log("\nrequestMatchesRepo (sidebar filter)");
+  check("explicit repo matches active", requestMatchesRepo("acme/api", "acme/api", "acme/webapp") === true);
+  check("explicit repo doesn't match other active", requestMatchesRepo("acme/api", "acme/webapp", "acme/webapp") === false);
+  check("null request repo matches when default is active", requestMatchesRepo(null, "acme/webapp", "acme/webapp") === true);
+  check("null request repo doesn't match a non-default active", requestMatchesRepo(null, "acme/api", "acme/webapp") === false);
+  check("no active repo → matches everything", requestMatchesRepo("acme/x", null, "acme/webapp") === true);
 
   console.log("");
   if (failures > 0) {

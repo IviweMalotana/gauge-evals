@@ -30,6 +30,34 @@ export function resolveRepoForRequest(
 }
 
 /**
+ * The workspace's active repo: the user's cookie choice if it's still connected,
+ * else the company default, else the first connected repo. Pure.
+ */
+export function resolveActiveRepo(
+  cookieValue: string | null | undefined,
+  connected: string[],
+  defaultRepo: string | null | undefined
+): string | null {
+  if (cookieValue && connected.includes(cookieValue)) return cookieValue;
+  if (defaultRepo && connected.includes(defaultRepo)) return defaultRepo;
+  return connected[0] ?? defaultRepo ?? null;
+}
+
+/**
+ * Whether a request belongs to the active repo. A request with no explicit repo
+ * ran against the company default, so it matches when the default is active. Pure.
+ */
+export function requestMatchesRepo(
+  requestRepo: string | null | undefined,
+  activeRepo: string | null,
+  defaultRepo: string | null | undefined
+): boolean {
+  if (!activeRepo) return true; // no workspace filter → show everything
+  const effective = requestRepo ?? defaultRepo ?? null;
+  return effective === activeRepo;
+}
+
+/**
  * Ensure the Repo table reflects a company that only has the legacy single
  * `githubDefaultRepo` set — backfill one default Repo row so the multi-repo UI
  * and pipeline have a consistent source of truth. Idempotent.
