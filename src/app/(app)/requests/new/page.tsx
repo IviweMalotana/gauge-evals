@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import { requireUser } from "@/lib/guards";
 import { db } from "@/lib/db";
-import { ensureReposBackfilled, listCompanyRepos } from "@/lib/repos";
+import { ensureReposBackfilled, listCompanyRepos, resolveActiveRepo } from "@/lib/repos";
+import { ACTIVE_REPO_COOKIE } from "@/lib/workspace";
 import { NewRequestForm } from "@/components/NewRequestForm";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +14,12 @@ export default async function NewRequestPage() {
     await ensureReposBackfilled({ id: company.id, githubDefaultRepo: company.githubDefaultRepo });
   }
   const repos = await listCompanyRepos(user.companyId);
+  const cookieRepo = cookies().get(ACTIVE_REPO_COOKIE)?.value ?? null;
+  const activeRepo = resolveActiveRepo(
+    cookieRepo,
+    repos.map((r) => r.fullName),
+    company?.githubDefaultRepo
+  );
 
   return (
     <div style={{ maxWidth: 640 }}>
@@ -21,10 +29,7 @@ export default async function NewRequestPage() {
         classify it (bug vs feature), then draft a BRD for you to approve.
       </p>
       <div className="card">
-        <NewRequestForm
-          repos={repos.map((r) => r.fullName)}
-          defaultRepo={company?.githubDefaultRepo ?? null}
-        />
+        <NewRequestForm repos={repos.map((r) => r.fullName)} defaultRepo={activeRepo} />
       </div>
       <p className="small muted">
         Filing kicks off the pipeline in the background — you'll land on the
