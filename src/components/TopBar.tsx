@@ -25,6 +25,7 @@ export function TopBar({
       <nav className="row">
         <GithubStatus info={github} />
         <Link href="/requests">Requests</Link>
+        <Link href="/deliverables">Deliverables</Link>
         <Link href="/members">Members</Link>
         <Link href="/settings">Settings</Link>
         <form action={logout} style={{ display: "inline", marginLeft: 18 }}>

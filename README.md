@@ -35,6 +35,29 @@ UX check → BRD (Given/When/Then) → [human approval] → Plan → Build → T
 > code review instead of browser tests, compare-URL instead of a PR) so the
 > whole pipeline still runs end-to-end.
 
+## PM Deliverables
+
+Baton also generates classic project-management deliverables from whatever the
+workspace already knows (team, requests, BRDs, plans, verification results) —
+a hybrid "best of" toolkit across methodologies:
+
+| Deliverable                      | Methodology     |
+| -------------------------------- | --------------- |
+| Project Charter                  | PMBOK           |
+| RACI Matrix                      | PMBOK           |
+| Risk Register                    | PMBOK           |
+| DMAIC Improvement Plan           | Lean Six Sigma  |
+| Status Report                    | Agile           |
+| Retrospective & Lessons Learned  | Agile / Kaizen  |
+
+Each deliverable is drafted by Claude (deterministic template without an API
+key), **adjustable in-app** (sections + tables, versioned on every edit), and
+**shareable across teams**: a stable public link (`/share/d/<token>`) serves it
+as a standalone, print-friendly HTML page with no login required, and it can be
+downloaded as a self-contained `.html` file. Scope a deliverable to a single
+request (charter/retro for one change) or to the whole workspace (status
+report, risk register). Find it under **Deliverables** in the top bar.
+
 ## Stack
 
 - Next.js 14 (App Router, TypeScript), React Server Components + server actions

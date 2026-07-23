@@ -41,6 +41,7 @@ model Company {
   requests     Request[]
   requirements RequirementDoc[]
   repos        Repo[]
+  deliverables Deliverable[]
 }
 
 // A GitHub repository connected to a company. A company connects GitHub once
@@ -112,15 +113,16 @@ model Request {
   createdById String
   createdBy   User   @relation("RequestCreatedBy", fields: [createdById], references: [id])
 
-  uxCheck   UxCheck?
-  brd       Brd?
-  plan      Plan?
-  build     Build?
-  impact    RequirementImpact?
-  checks    VerificationCheck[]
-  pullReq   PullRequestRef?
-  approvals Approval[]
-  events    PipelineEvent[]
+  uxCheck      UxCheck?
+  brd          Brd?
+  plan         Plan?
+  build        Build?
+  impact       RequirementImpact?
+  checks       VerificationCheck[]
+  pullReq      PullRequestRef?
+  approvals    Approval[]
+  events       PipelineEvent[]
+  deliverables Deliverable[]
 
   @@index([companyId])
   @@index([status])
@@ -255,6 +257,36 @@ model RequirementDoc {
   @@unique([companyId, reqId])
   @@index([companyId])
   @@index([companyId, category])
+}
+
+// A project-management deliverable: a structured document generated from the
+// hybrid methodology set (PMBOK charter/RACI/risk register, Lean Six Sigma
+// DMAIC, Agile status report/retrospective). Content is generic — sections of
+// prose plus tables — so one renderer/editor covers every kind. Deliverables
+// are company-scoped, optionally tied to a request, editable in-app, and
+// shareable read-only via `shareToken` as a standalone HTML page.
+model Deliverable {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requestId String?
+  request   Request? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  kind       String // DeliverableKind: charter | raci | risk_register | dmaic | status_report | retrospective
+  title      String
+  summary    String @default("")
+  sections   String @default("[]") // JSON: [{ heading, body }]
+  tables     String @default("[]") // JSON: [{ title, headers[], rows[][] }]
+  model      String @default("template-fallback") // which model produced the current content
+  version    Int    @default(1) // bumped on every edit/regenerate
+  shareToken String @unique @default(cuid()) // read-only public share link; stable across edits
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([requestId])
 }
 
 // Background work queue. Filing a request (or approving a BRD) enqueues a Job;
