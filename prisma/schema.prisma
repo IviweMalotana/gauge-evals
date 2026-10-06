@@ -37,10 +37,234 @@ model Company {
   appBaseUrl         String? // where the company's app runs; UX-check drives it
   previewUrlTemplate String? // per-branch preview URL, e.g. "https://app-{branch}.up.railway.app"
 
+  // AI model routing per agent role (JSON: { ba, ux, qa, impact, questions, release }).
+  // Each value is a logical provider:model (e.g. "anthropic:claude-sonnet-4-5"). An
+  // unset value falls back to ANTHROPIC_MODEL. Centralising this lets a cheaper
+  // model handle classification/extraction while senior-BA reasoning stays on the
+  // strongest tier.
+  modelRouting String @default("{}")
+
   members      Membership[]
   requests     Request[]
   requirements RequirementDoc[]
   repos        Repo[]
+  projects     Project[]
+  jira         JiraConnection?
+  releases     Release[]
+}
+
+// ---------------------------------------------------------------------------
+// Jira integration
+// ---------------------------------------------------------------------------
+
+model JiraConnection {
+  id             String   @id @default(cuid())
+  companyId      String   @unique
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  baseUrl        String   // https://acme.atlassian.net
+  email          String   // Jira account email for API token auth
+  apiTokenCipher String   // encrypted at rest when AUTH_SECRET is set
+  cloudId        String?  // Atlassian cloud id, resolved after connect
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  issues         JiraIssue[]
+}
+
+model JiraIssue {
+  id           String   @id @default(cuid())
+  connectionId String
+  connection   JiraConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  projectKey   String   // "ENG"
+  issueKey     String   // "ENG-412"
+  issueType    String   // Epic | Story | Task | Bug | Sub-task
+  summary      String
+  status       String
+  assignee     String?
+  priority     String?
+  sprint       String?
+  parentKey    String?  // epic / story parent
+  raw          String   // full issue JSON for later re-reads
+  updatedAt    DateTime @updatedAt
+
+  @@unique([connectionId, issueKey])
+  @@index([connectionId, projectKey])
+}
+
+// ---------------------------------------------------------------------------
+// Product knowledge model
+// ---------------------------------------------------------------------------
+
+// A Project groups one Jira project + one GitHub repo + the knowledge-model
+// baseline the platform builds for them. A company can have many projects.
+model Project {
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name           String
+  slug           String
+  repoFullName   String?  // owner/name
+  jiraProjectKey String?  // "ENG"
+  baselineAt     DateTime? // when the baseline last ran
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  modules       Module[]
+  screens       Screen[]
+  routes        Route[]
+  components    UiComponent[]
+  entities      Entity[]
+  apis          Api[]
+  businessRules BusinessRule[]
+  journeys      UserJourney[]
+  decisions     Decision[]
+  releases      Release[]
+  requests      Request[]
+
+  @@unique([companyId, slug])
+  @@index([companyId])
+}
+
+// A grouping of related screens/routes/entities (e.g. "Checkout").
+model Module {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  summary   String   @default("")
+  evidence  String   @default("{}") // JSON: { files: string[], notes: string }
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, name])
+}
+
+// A page/view in the app.
+model Screen {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String   // "Order details"
+  routeId   String?  // optional link to its primary route
+  purpose   String   @default("")
+  states    String   @default("[]") // JSON: ["loading","empty","error","success"]
+  evidence  String   @default("{}") // JSON: { files, screenshots }
+  // 'observed' | 'inferred' | 'unknown' | 'confirmed'
+  confidence String   @default("inferred")
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, name])
+}
+
+model Route {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  path      String   // "/orders/[id]"
+  method    String   @default("GET") // for API routes
+  kind      String   @default("page") // page | api
+  evidence  String   @default("{}")
+
+  @@unique([projectId, kind, method, path])
+}
+
+model UiComponent {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  filePath  String   @default("")
+  summary   String   @default("")
+
+  @@unique([projectId, name])
+}
+
+// An ERD-style entity derived from the data layer (Prisma / SQL / ORM).
+model Entity {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  fields    String   @default("[]") // JSON: [{ name, type, nullable, pk, fk }]
+  relations String   @default("[]") // JSON: [{ to, kind }]
+  filePath  String   @default("")
+
+  @@unique([projectId, name])
+}
+
+model Api {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  method    String   // GET | POST | ...
+  path      String   // "/api/orders/:id"
+  summary   String   @default("")
+  request   String   @default("{}") // JSON schema stub
+  response  String   @default("{}")
+  filePath  String   @default("")
+
+  @@unique([projectId, method, path])
+}
+
+model BusinessRule {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  rule      String   // "An order below MOQ 100 is rejected"
+  source    String   // where it came from: file:line / jira:ENG-412 / human
+  moduleId  String?
+  createdAt DateTime @default(now())
+}
+
+model UserJourney {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  steps     String   @default("[]") // JSON: [{ screenId?, action }]
+  outcome   String   @default("")
+
+  @@unique([projectId, name])
+}
+
+model Decision {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title     String
+  context   String   @default("")
+  decision  String
+  consequences String @default("")
+  decidedAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Releases
+// ---------------------------------------------------------------------------
+
+model Release {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  version     String   // "2026.10.1"
+  summary     String   @default("")
+  // JSON array of { requestId, prUrl, title }
+  ticketLinks String   @default("[]")
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  notes       ReleaseNote[]
+
+  @@index([companyId])
+}
+
+model ReleaseNote {
+  id        String   @id @default(cuid())
+  releaseId String
+  release   Release  @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  audience  String   // "user" | "technical" | "internal"
+  body      String   // markdown
+
+  @@unique([releaseId, audience])
 }
 
 // A GitHub repository connected to a company. A company connects GitHub once
@@ -103,6 +327,11 @@ model Request {
   status      String   @default("INTAKE") // RequestStatus
   priority    String   @default("normal") // low | normal | high
   repoFullName String? // which connected repo this request targets (null → company default)
+  // Optional Jira issue this Baton request is driving. The Jira ticket remains the
+  // delivery source of truth; Baton drives the BA/QA pipeline on top of it.
+  jiraIssueKey String?
+  projectId    String?
+  project      Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -121,6 +350,7 @@ model Request {
   pullReq   PullRequestRef?
   approvals Approval[]
   events    PipelineEvent[]
+  questions ClarifyingQuestion[]
 
   @@index([companyId])
   @@index([status])
@@ -285,6 +515,29 @@ model PipelineEvent {
   level     String   @default("info") // info | warn | error
   message   String
   data      String? // JSON blob of stage detail
+  createdAt DateTime @default(now())
+
+  @@index([requestId])
+}
+
+// ---------------------------------------------------------------------------
+// Clarifying questions (BA agent)
+// ---------------------------------------------------------------------------
+//
+// Before writing requirements, the BA agent surfaces things it cannot answer
+// from the brief, Jira, or the code. These block the pipeline at QUESTIONS
+// until a human answers (or marks them N/A). The answered set is fed back
+// into the BRD stage as explicit assumptions.
+model ClarifyingQuestion {
+  id        String   @id @default(cuid())
+  requestId String
+  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  question  String
+  // open | answered | dismissed
+  state     String   @default("open")
+  answer    String?
+  answeredBy String?
+  answeredAt DateTime?
   createdAt DateTime @default(now())
 
   @@index([requestId])

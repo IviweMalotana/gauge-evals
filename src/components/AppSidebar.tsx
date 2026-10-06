@@ -25,6 +25,14 @@ export function AppSidebar({
 }) {
   return (
     <aside className="sidebar">
+      <nav className="sidebar-nav" aria-label="Primary">
+        <Link href="/dashboard" className="sidebar-nav-link">Portfolio</Link>
+        <Link href="/projects" className="sidebar-nav-link">Projects</Link>
+        <Link href="/product" className="sidebar-nav-link">Product</Link>
+        <Link href="/releases" className="sidebar-nav-link">Releases</Link>
+        <Link href="/integrations" className="sidebar-nav-link">Integrations</Link>
+        <Link href="/settings" className="sidebar-nav-link">Settings</Link>
+      </nav>
       <div className="sidebar-top">
         <div className="sidebar-heading small muted">Repositories</div>
       </div>
