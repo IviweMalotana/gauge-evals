@@ -1,5 +1,7 @@
 # Baton
 
+[![CI](https://github.com/IviweMalotana/gauge-evals/actions/workflows/ci.yml/badge.svg)](https://github.com/IviweMalotana/gauge-evals/actions/workflows/ci.yml)
+
 From stakeholder request to QA-verified pull request — the **BA-to-QA pipeline**.
 
 A company registers, invites collaborators and assigns them roles, and connects
