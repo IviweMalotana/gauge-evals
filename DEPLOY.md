@@ -111,3 +111,37 @@ scripts/db-provider.sh sqlite
 
 (The committed schema stays on `sqlite` so local/web dev needs no database
 service. Only flip it to `postgresql` in the deploy build.)
+
+## Split deploy: Vercel web + Railway worker
+
+For `ba.bedifferentpackaging.com` on the BDP accounts the app is split across
+two hosts:
+
+- **Vercel** serves the Next.js web app (login, dashboards, API routes).
+  Vercel can't run a long-lived loop and can't launch headless Chromium at the
+  size the UX-check / QA agents need, so it must **not** run the queue itself.
+  Set `EXTERNAL_WORKER=true` on the Vercel project — `src/instrumentation.ts`
+  checks this and skips `ensureWorker()`.
+- **Railway** runs the worker (`npm run worker`, see `scripts/worker.ts` and
+  `railway.worker.json`). It reuses the same `Dockerfile` (Playwright image
+  with Chromium) and polls the same `Job` table.
+
+Both services point at the **same Postgres**. Either Vercel Postgres referenced
+from Railway or Railway Postgres referenced from Vercel works; the only rule
+is that `DATABASE_URL` is identical in both environments.
+
+Required env on BOTH services:
+
+| Key | Vercel | Railway worker |
+| --- | --- | --- |
+| `DATABASE_URL` | ✅ (same string) | ✅ (same string) |
+| `AUTH_SECRET` | ✅ | ✅ |
+| `APP_URL` | `https://ba.bedifferentpackaging.com` | same |
+| `ANTHROPIC_API_KEY` | optional | optional |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | ✅ | ✅ |
+| `EXTERNAL_WORKER` | `true` | *(leave unset)* |
+
+GitHub OAuth callback: `https://ba.bedifferentpackaging.com/api/oauth/github/callback`.
+
+HostKing DNS: `CNAME ba → <the Vercel target>` for the web; the Railway
+worker needs no public hostname.
