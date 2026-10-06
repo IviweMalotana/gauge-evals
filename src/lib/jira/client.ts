@@ -169,12 +169,68 @@ export async function addIssueComment(
   body: string
 ): Promise<void> {
   await post(cfg, `/rest/api/3/issue/${encodeURIComponent(key)}/comment`, {
-    body: {
-      type: "doc",
-      version: 1,
-      content: [{ type: "paragraph", content: [{ type: "text", text: body }] }],
-    },
+    body: textToAdf(body),
   });
+}
+
+/**
+ * Convert plain text to Atlassian Document Format: blank-line-separated
+ * paragraphs, with a run of "- " lines rendered as a bullet list. Good enough
+ * for the descriptions we generate (BRD narrative, plan steps, devops notes);
+ * not a general markdown→ADF converter.
+ */
+export function textToAdf(text: string): object {
+  const blocks = text
+    .split(/\n{2,}/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+  const content = blocks.map((block) => {
+    const lines = block.split("\n").map((l) => l.trim());
+    if (lines.every((l) => l.startsWith("- "))) {
+      return {
+        type: "bulletList",
+        content: lines.map((l) => ({
+          type: "listItem",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: l.slice(2) }] },
+          ],
+        })),
+      };
+    }
+    return { type: "paragraph", content: [{ type: "text", text: block }] };
+  });
+  return { type: "doc", version: 1, content: content.length > 0 ? content : [{ type: "paragraph", content: [] }] };
+}
+
+export interface CreateIssueInput {
+  projectKey: string;
+  issueType: string; // "Story" | "Task" | "Sub-task" | ...
+  summary: string;
+  description: string; // plain text; converted to ADF
+  /** Epic key (for a top-level story) or parent issue key (required for a Sub-task). */
+  parentKey?: string;
+}
+
+/**
+ * File a new Jira issue. The platform never rewrites existing Jira state —
+ * this only creates the tickets Baton's pipeline files on top of a request
+ * (product + delivery tickets); humans and existing Jira automation own
+ * everything else about the issue's lifecycle.
+ */
+export async function createIssue(
+  cfg: JiraConnectionConfig,
+  input: CreateIssueInput
+): Promise<{ key: string; url: string }> {
+  const fields: Record<string, unknown> = {
+    project: { key: input.projectKey },
+    issuetype: { name: input.issueType },
+    summary: input.summary,
+    description: textToAdf(input.description),
+  };
+  if (input.parentKey) fields.parent = { key: input.parentKey };
+
+  const res = await post<{ key: string }>(cfg, "/rest/api/3/issue", { fields });
+  return { key: res.key, url: `${cfg.baseUrl}/browse/${res.key}` };
 }
 
 function toIssueSummary(raw: unknown): JiraIssueSummary {

@@ -64,6 +64,7 @@ function main() {
     narrative: "Update the login heading",
     gherkin: "",
     acceptanceCriteria: ["Heading reads 'Sign in to Baton'"],
+    devOpsNotes: [],
     model: "test",
   });
   check("query weaves in title, description, narrative, criteria", /Rename heading/.test(q) && /Sign in to Baton/.test(q));

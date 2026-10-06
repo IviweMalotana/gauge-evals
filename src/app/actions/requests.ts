@@ -15,6 +15,7 @@ const createSchema = z.object({
   description: z.string().min(10, "Add a bit more detail so the agent can work"),
   priority: z.enum(["low", "normal", "high"]).default("normal"),
   repoFullName: z.string().optional(),
+  designPrototypeUrl: z.string().url().optional().or(z.literal("")),
 });
 
 export type ReqActionState = { error?: string } | undefined;
@@ -34,6 +35,7 @@ export async function createRequest(
     description: formData.get("description"),
     priority: formData.get("priority") ?? "normal",
     repoFullName: formData.get("repoFullName") ?? undefined,
+    designPrototypeUrl: formData.get("designPrototypeUrl") ?? undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -55,6 +57,7 @@ export async function createRequest(
       description: parsed.data.description,
       priority: parsed.data.priority,
       repoFullName,
+      designPrototypeUrl: parsed.data.designPrototypeUrl || null,
       companyId: user.companyId,
       createdById: user.id,
     },

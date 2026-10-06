@@ -55,6 +55,17 @@ export function NewRequestForm({
         <option value="high">High</option>
       </select>
 
+      <label htmlFor="designPrototypeUrl">Design prototype URL (optional)</label>
+      <input
+        id="designPrototypeUrl"
+        name="designPrototypeUrl"
+        type="url"
+        placeholder="https://figma.com/..."
+      />
+      <p className="small muted" style={{ marginTop: -8 }}>
+        Attached to the Design delivery ticket Baton files in Jira.
+      </p>
+
       {state?.error && <div className="error">{state.error}</div>}
       <SubmitButton />
     </form>

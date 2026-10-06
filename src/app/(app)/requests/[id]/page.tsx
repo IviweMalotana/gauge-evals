@@ -47,6 +47,7 @@ export default async function RequestDetail({
       build: true,
       checks: true,
       pullReq: true,
+      tickets: true,
       approvals: {
         orderBy: { createdAt: "desc" },
         include: { user: { select: { name: true, email: true } } },
@@ -72,8 +73,21 @@ export default async function RequestDetail({
       : null;
 
   const criteria = parseArray(request.brd?.acceptanceCriteria);
+  const devOpsNotes = parseArray(request.brd?.devOpsNotes);
   const uxSteps = parseArray(request.uxCheck?.steps);
   const planSteps = parseArray(request.plan?.steps);
+
+  const TICKET_META: Record<string, string> = {
+    product: "Product",
+    design: "Design",
+    backend: "Backend",
+    frontend: "Frontend",
+    devops: "DevOps",
+  };
+  const ticketOrder = ["product", "design", "backend", "frontend", "devops"];
+  const tickets = [...request.tickets].sort(
+    (a, b) => ticketOrder.indexOf(a.kind) - ticketOrder.indexOf(b.kind)
+  );
 
   const CHECK_META: Record<string, string> = {
     acceptance: "Acceptance (UX)",
@@ -239,6 +253,21 @@ export default async function RequestDetail({
               </ul>
             </>
           )}
+
+          {devOpsNotes.length > 0 && (
+            <>
+              <h4>Needs a human or MCP tool</h4>
+              <p className="small muted" style={{ marginTop: -8 }}>
+                Infra/third-party work the automated pipeline can&apos;t do from a
+                pull request — tracked on its own DevOps delivery ticket.
+              </p>
+              <ul>
+                {devOpsNotes.map((n, i) => (
+                  <li key={i}>{n}</li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
 
@@ -339,6 +368,44 @@ export default async function RequestDetail({
               <li key={i}>{s}</li>
             ))}
           </ol>
+        </div>
+      )}
+
+      {tickets.length > 0 && (
+        <div className="card">
+          <h3 style={{ marginTop: 0 }}>Delivery tickets</h3>
+          <p className="small muted" style={{ marginTop: -8 }}>
+            Epic → product ticket → design / backend / frontend{" "}
+            {tickets.some((t) => t.kind === "devops") && "/ devops "}
+            delivery tickets, filed in Jira.
+          </p>
+          <table>
+            <tbody>
+              {tickets.map((t) => (
+                <tr key={t.id}>
+                  <td className="small" style={{ width: 90 }}>
+                    {TICKET_META[t.kind] ?? t.kind}
+                    {t.needsHuman && (
+                      <span className="badge bug" style={{ marginLeft: 6 }}>
+                        human/MCP
+                      </span>
+                    )}
+                  </td>
+                  <td className="small">
+                    {t.status === "created" && t.url ? (
+                      <a href={t.url} target="_blank" rel="noreferrer">
+                        {t.issueKey}
+                      </a>
+                    ) : t.status === "failed" ? (
+                      <span className="muted">Failed{t.error ? ` — ${t.error}` : ""}</span>
+                    ) : (
+                      <span className="muted">{t.status}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

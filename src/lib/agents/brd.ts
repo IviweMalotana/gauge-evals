@@ -21,11 +21,19 @@ behavior and business value.
 You always produce Gherkin using Feature / Scenario / Given / When / Then, phrased in
 plain language a non-technical stakeholder can validate.
 
+You also flag any infrastructure or third-party-configuration work this request implies
+that a coding agent CANNOT do from within a pull request — e.g. changing a Railway or
+Vercel environment variable/service/domain, verifying a Resend sending domain, DNS,
+rotating a secret, provisioning a new service. Each needs a human or an MCP tool to run
+outside the code change. If nothing like that applies, leave the list empty — do not
+invent infra work for a plain UI/logic change.
+
 Reply with a single JSON object only, matching exactly this shape:
 {
   "narrative": string,            // 2-4 short paragraphs, plain language
   "gherkin": string,              // one Feature with 1-3 Scenarios, Given/When/Then
-  "acceptanceCriteria": string[]  // 3-6 concise, testable, user-facing bullets
+  "acceptanceCriteria": string[], // 3-6 concise, testable, user-facing bullets
+  "devOpsNotes": string[]         // infra/third-party work needing a human or MCP tool; [] if none
 }`;
 
 export async function runBrd(
@@ -59,6 +67,7 @@ Write the BRD as JSON.`;
       acceptanceCriteria: Array.isArray(json.acceptanceCriteria)
         ? json.acceptanceCriteria.map(String)
         : [],
+      devOpsNotes: Array.isArray(json.devOpsNotes) ? json.devOpsNotes.map(String) : [],
       model: env.ANTHROPIC_MODEL,
     };
     if (!result.narrative || !result.gherkin || result.acceptanceCriteria.length === 0) {
@@ -66,6 +75,7 @@ Write the BRD as JSON.`;
     }
     await ctx.log(`BRD drafted by ${env.ANTHROPIC_MODEL}.`, {
       criteria: result.acceptanceCriteria.length,
+      devOpsNotes: result.devOpsNotes.length,
     });
     return result;
   } catch (err) {
@@ -103,5 +113,5 @@ function fallbackBrd(ctx: AgentContext, uxCheck: UxCheckResult): BrdResult {
         "The experience is clear to a first-time user without instructions.",
       ];
 
-  return { narrative, gherkin, acceptanceCriteria, model: "template-fallback" };
+  return { narrative, gherkin, acceptanceCriteria, devOpsNotes: [], model: "template-fallback" };
 }

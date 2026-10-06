@@ -11,6 +11,7 @@ import { runBrd } from "./brd";
 import { runImpactAnalysis, saveImpact, loadImpactDrafts, draftToFile } from "./impact";
 import { checkUiConformance, formatConformanceWarnings } from "./uiFixer";
 import { runPlanner } from "./planner";
+import { runTicketCreation } from "./tickets";
 import { runBuilder } from "./builder";
 import { runAcceptance, runBugFix, runRegression } from "./tester";
 import { resolveTestTarget } from "./preview";
@@ -127,12 +128,14 @@ export async function runToApproval(requestId: string): Promise<void> {
         narrative: brd.narrative,
         gherkin: brd.gherkin,
         acceptanceCriteria: JSON.stringify(brd.acceptanceCriteria),
+        devOpsNotes: JSON.stringify(brd.devOpsNotes),
         model: brd.model,
       },
       update: {
         narrative: brd.narrative,
         gherkin: brd.gherkin,
         acceptanceCriteria: JSON.stringify(brd.acceptanceCriteria),
+        devOpsNotes: JSON.stringify(brd.devOpsNotes),
         model: brd.model,
         version: { increment: 1 },
       },
@@ -169,6 +172,7 @@ export async function runAfterApproval(requestId: string): Promise<void> {
     narrative: brdRow.narrative,
     gherkin: brdRow.gherkin,
     acceptanceCriteria: JSON.parse(brdRow.acceptanceCriteria) as string[],
+    devOpsNotes: JSON.parse(brdRow.devOpsNotes) as string[],
     model: brdRow.model,
   };
 
@@ -192,6 +196,26 @@ export async function runAfterApproval(requestId: string): Promise<void> {
         files: JSON.stringify(plan.files),
       },
     });
+
+    // --- Delivery tickets (Jira): product ticket + design/backend/frontend,
+    //     plus a devops ticket if the BRD flagged human/MCP-only work.
+    //     Best-effort — a Jira hiccup is logged, never fails the build. ---
+    try {
+      await logEvent(requestId, "tickets", "Filing delivery tickets in Jira.");
+      const outcomes = await runTicketCreation(ctx, brd, plan);
+      if (outcomes.length > 0) {
+        const created = outcomes.filter((o) => o.status === "created").length;
+        await logEvent(requestId, "tickets", `Filed ${created}/${outcomes.length} delivery ticket(s).`);
+      }
+    } catch (err) {
+      await logEvent(
+        requestId,
+        "tickets",
+        `Delivery-ticket creation skipped: ${(err as Error).message}`,
+        undefined,
+        "warn"
+      );
+    }
 
     // --- Builder ---
     request = await setStatus(requestId, "BUILDING");

@@ -33,6 +33,13 @@ export interface BrdResult {
   narrative: string;
   gherkin: string;
   acceptanceCriteria: string[];
+  /**
+   * Plain-language notes naming infra/third-party work the automated build
+   * pipeline cannot do itself — deploy config, env vars, DNS, Railway/Vercel/
+   * Resend changes, secrets, etc. — and so needs a human or an MCP tool.
+   * Empty when the request has no such implications.
+   */
+  devOpsNotes: string[];
   model: string;
 }
 

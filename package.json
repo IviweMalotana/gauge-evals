@@ -14,7 +14,7 @@
     "seed": "tsx prisma/seed.ts",
     "setup": "prisma db push && tsx prisma/seed.ts",
     "worker": "prisma generate && tsx scripts/worker.ts",
-    "test": "tsx scripts/test-acceptance-review.ts && tsx scripts/test-requirements-seed.ts && tsx scripts/test-impact.ts && tsx scripts/test-duplicate-copy.ts && tsx scripts/test-design.ts && tsx scripts/test-ui-fixer.ts && tsx scripts/test-repos.ts"
+    "test": "tsx scripts/test-acceptance-review.ts && tsx scripts/test-requirements-seed.ts && tsx scripts/test-impact.ts && tsx scripts/test-duplicate-copy.ts && tsx scripts/test-design.ts && tsx scripts/test-ui-fixer.ts && tsx scripts/test-repos.ts && tsx scripts/test-tickets.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.1",

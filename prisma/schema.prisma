@@ -90,6 +90,38 @@ model JiraIssue {
   @@index([connectionId, projectKey])
 }
 
+// A ticket Baton created in Jira for a request, in MVP/delivery structure:
+//   Epic (existing Jira epic, via Request.jiraIssueKey)
+//     └─ Product ticket   — the true deliverable (kind "product")
+//          ├─ Design      — the prototype/UX change (kind "design")
+//          ├─ Backend     — backend changes (kind "backend")
+//          ├─ Frontend    — frontend changes (kind "frontend")
+//          └─ DevOps      — human/MCP-only infra work, only created when the
+//                           BRD surfaced any (kind "devops"; needsHuman=true)
+// One row per (request, kind); re-running ticket creation updates the row in
+// place rather than filing duplicates.
+model DeliveryTicket {
+  id         String   @id @default(cuid())
+  requestId  String
+  request    Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  kind       String   // product | design | backend | frontend | devops
+  parentKey  String?  // epic key (product) or product ticket key (delivery tickets)
+  issueKey   String?  // Jira key once created, e.g. "ENG-413"
+  url        String?  // Jira browse URL
+  title      String
+  body       String   // description used to create/update the issue
+  status     String   @default("pending") // pending | created | failed | skipped
+  error      String?
+  // DevOps tickets only: this work needs a human or an MCP tool and cannot be
+  // completed by the automated build pipeline.
+  needsHuman Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([requestId, kind])
+  @@index([requestId])
+}
+
 // ---------------------------------------------------------------------------
 // Product knowledge model
 // ---------------------------------------------------------------------------
@@ -329,7 +361,11 @@ model Request {
   repoFullName String? // which connected repo this request targets (null → company default)
   // Optional Jira issue this Baton request is driving. The Jira ticket remains the
   // delivery source of truth; Baton drives the BA/QA pipeline on top of it.
+  // If set, treated as the EPIC the generated product ticket is filed under.
   jiraIssueKey String?
+  // Optional link to a design prototype/mockup (e.g. Figma) for this change,
+  // attached to the generated Design delivery ticket.
+  designPrototypeUrl String?
   projectId    String?
   project      Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
@@ -351,6 +387,7 @@ model Request {
   approvals Approval[]
   events    PipelineEvent[]
   questions ClarifyingQuestion[]
+  tickets   DeliveryTicket[]
 
   @@index([companyId])
   @@index([status])
@@ -393,6 +430,12 @@ model Brd {
   narrative          String   // plain-language BRD, BA/UX voice (no dev jargon)
   gherkin            String   // Feature: ... Scenario ... Given/When/Then
   acceptanceCriteria String   // JSON array of acceptance-criteria bullet strings
+  // JSON array of plain-language notes naming infra/third-party work (deploy
+  // config, env vars, DNS, Railway/Vercel/Resend changes, ...) that needs a
+  // human or an MCP tool to carry out — the coding agent cannot do these from
+  // a PR. Surfaced on its own DevOps delivery ticket, never folded into the
+  // product ticket.
+  devOpsNotes        String   @default("[]")
   model              String   // which Anthropic model produced it
   version            Int      @default(1)
   createdAt          DateTime @default(now())

@@ -58,6 +58,7 @@ const BRD: BrdResult = {
   narrative: "The login page heading should welcome users to Baton by name.",
   gherkin: "",
   acceptanceCriteria: ['The login page heading reads "Sign in to Baton".'],
+  devOpsNotes: [],
   model: "test",
 };
 
