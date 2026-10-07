@@ -1,0 +1,7 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "bash scripts/db-provider.sh postgresql && next build",
+  "env": {
+    "EXTERNAL_WORKER": "true"
+  }
+}
