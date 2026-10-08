@@ -1,6 +1,6 @@
 {
   "framework": "nextjs",
-  "buildCommand": "bash scripts/db-provider.sh postgresql && next build",
+  "buildCommand": "bash scripts/db-provider.sh postgresql && npx prisma generate && next build",
   "env": {
     "EXTERNAL_WORKER": "true"
   }
