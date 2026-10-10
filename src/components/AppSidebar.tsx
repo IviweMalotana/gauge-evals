@@ -6,6 +6,7 @@ export interface SidebarSpace {
   initials: string;
   color: string;
   slug: string;
+  fullName: string;
 }
 
 export interface SidebarUser {

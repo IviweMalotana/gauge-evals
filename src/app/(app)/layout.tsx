@@ -44,10 +44,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     name: name.split("/").pop() ?? name,
     initials: initials(name),
     color: SPACE_COLORS[i % SPACE_COLORS.length],
-    slug: name,
+    slug: encodeURIComponent(name),
+    fullName: name,
   }));
 
-  const activeSpace = activeRepo ?? null;
+  const activeSpace = activeRepo ? encodeURIComponent(activeRepo) : null;
 
   const headersList = headers();
   const pathname = headersList.get("x-next-pathname") ?? "/dashboard";
