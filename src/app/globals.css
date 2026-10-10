@@ -1043,6 +1043,36 @@ pre {
   border-color: var(--danger);
 }
 
+.grid.cols-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.grid.cols-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 800px) {
+  .grid.cols-2,
+  .grid.cols-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.badge.status {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+.badge.feature {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.badge.role {
+  background: var(--surface2);
+  color: var(--fg2);
+}
+
 /* ------------------------------------------------------------------ */
 /* Responsive                                                         */
 /* ------------------------------------------------------------------ */
