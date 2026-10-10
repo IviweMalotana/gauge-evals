@@ -1,12 +1,24 @@
 import type { ReactNode } from "react";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { requireUser } from "@/lib/guards";
 import { db } from "@/lib/db";
-import { TopBar } from "@/components/TopBar";
-import { AppSidebar, type SidebarRequest } from "@/components/AppSidebar";
-import type { GithubStatusInfo } from "@/components/GithubStatus";
+import { AppSidebar, type SidebarSpace } from "@/components/AppSidebar";
 import { ensureReposBackfilled, listCompanyRepos, resolveActiveRepo } from "@/lib/repos";
 import { ACTIVE_REPO_COOKIE } from "@/lib/workspace";
+
+const SPACE_COLORS = [
+  "#6d28d9", "#0891b2", "#059669", "#d97706", "#dc2626",
+  "#7c3aed", "#2563eb", "#db2777",
+];
+
+function initials(name: string): string {
+  return name
+    .split(/[\s\/]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join("");
+}
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await requireUser();
@@ -28,35 +40,32 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const cookieRepo = cookies().get(ACTIVE_REPO_COOKIE)?.value ?? null;
   const activeRepo = resolveActiveRepo(cookieRepo, repoNames, company?.githubDefaultRepo);
 
-  const allRequests = await db.request.findMany({
-    where: { companyId: user.companyId },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, title: true, status: true, repoFullName: true },
-    take: 200,
-  });
-  // Group sessions under the repo they ran against (a null repo used the default).
-  const requestsByRepo: Record<string, SidebarRequest[]> = {};
-  for (const r of allRequests) {
-    const key = r.repoFullName ?? company?.githubDefaultRepo ?? "";
-    if (!key) continue;
-    (requestsByRepo[key] ??= []).push({ id: r.id, title: r.title, status: r.status });
-  }
+  const spaces: SidebarSpace[] = repoNames.map((name, i) => ({
+    name: name.split("/").pop() ?? name,
+    initials: initials(name),
+    color: SPACE_COLORS[i % SPACE_COLORS.length],
+    slug: encodeURIComponent(name),
+    fullName: name,
+  }));
 
-  const github: GithubStatusInfo = {
-    connected: Boolean(company?.githubConnected),
-    login: company?.githubLogin ?? null,
-    avatarUrl: company?.githubAvatarUrl ?? null,
-    defaultRepo: activeRepo ?? company?.githubDefaultRepo ?? null,
-    repoCount: repos.length,
-  };
+  const activeSpace = activeRepo ? encodeURIComponent(activeRepo) : null;
+
+  const headersList = headers();
+  const pathname = headersList.get("x-next-pathname") ?? "/dashboard";
+
+  const userInitials = user.name
+    ? initials(user.name)
+    : user.email.slice(0, 2).toUpperCase();
 
   return (
-    <div>
-      <TopBar companyName={user.companyName} role={user.role} github={github} />
-      <div className="shell">
-        <AppSidebar repos={repoNames} activeRepo={activeRepo} requestsByRepo={requestsByRepo} />
-        <div className="container main">{children}</div>
-      </div>
+    <div className="app-shell">
+      <AppSidebar
+        spaces={spaces}
+        activeSpace={activeSpace}
+        user={{ name: user.name, email: user.email, initials: userInitials }}
+        currentPath={pathname}
+      />
+      <main className="main">{children}</main>
     </div>
   );
 }
